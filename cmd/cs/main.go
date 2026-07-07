@@ -354,15 +354,15 @@ func main() {
 	mappingCmd := &cobra.Command{Use: "mapping", Short: "模型映射管理"}
 
 	mappingAddCmd := &cobra.Command{
-		Use:   "add <project> <request-model> <cfg-name>",
+		Use:   "add <project> <request-model> <upstream/model>",
 		Short: "添加模型映射",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 3 {
-				return fmt.Errorf("用法: cs mapping add <project> <request-model> <cfg-name> [--backup <cfg>]...")
+				return fmt.Errorf("用法: cs mapping add <project> <request-model> <upstream/model> [--backup <upstream/model>]...")
 			}
-			projName, reqModel, primaryCfg := args[0], args[1], args[2]
+			projName, reqModel, primaryTarget := args[0], args[1], args[2]
 			backups, _ := cmd.Flags().GetStringSlice("backup")
-			cfgList := append([]string{primaryCfg}, backups...)
+			cfgList := append([]string{primaryTarget}, backups...)
 
 			cfg, err := loadConfig()
 			if err != nil {
@@ -391,7 +391,7 @@ func main() {
 			return config.Save(cfg, configPath)
 		},
 	}
-	mappingAddCmd.Flags().StringSlice("backup", nil, "备用 cfg 名（可多次指定）")
+	mappingAddCmd.Flags().StringSlice("backup", nil, "备用 upstream/model（可多次指定）")
 
 	mappingListCmd := &cobra.Command{
 		Use:   "list <project>",

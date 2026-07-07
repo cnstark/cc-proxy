@@ -14,16 +14,36 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("server.private_keys: 至少需要配置一个私有 key")
 	}
 
-	// 2. upstream name 唯一且非空
+	// 2. upstream name 唯一、非空、不含 /（model_map 解析依赖 / 分隔）
 	seenUpstream := make(map[string]bool)
 	for _, u := range cfg.Upstreams {
 		if u.Name == "" {
 			return fmt.Errorf("upstreams: cfg 名不能为空")
 		}
+		if strings.Contains(u.Name, "/") {
+			return fmt.Errorf("upstreams.%s: name 不能包含 /（model_map 解析依赖 / 分隔）", u.Name)
+		}
 		if seenUpstream[u.Name] {
 			return fmt.Errorf("upstreams: cfg 名 %q 重复", u.Name)
 		}
 		seenUpstream[u.Name] = true
+	}
+
+	// 2.1 models 非空、每项非空、无重复
+	for _, u := range cfg.Upstreams {
+		if len(u.Models) == 0 {
+			return fmt.Errorf("upstreams.%s.models: 至少需要一个模型", u.Name)
+		}
+		seenModel := make(map[string]bool)
+		for _, m := range u.Models {
+			if m == "" {
+				return fmt.Errorf("upstreams.%s.models: 模型名不能为空", u.Name)
+			}
+			if seenModel[m] {
+				return fmt.Errorf("upstreams.%s.models: 模型 %q 重复", u.Name, m)
+			}
+			seenModel[m] = true
+		}
 	}
 
 	// 3. project name 唯一且非空
@@ -50,29 +70,32 @@ func Validate(cfg Config) error {
 		}
 	}
 
-	// 5. model_map 引用的 cfg 名必须存在
+	// 5. model_map 条目格式 upstream/model，引用的 upstream 与 model 必须存在
+	upstreamModels := make(map[string]map[string]bool, len(cfg.Upstreams))
+	for _, u := range cfg.Upstreams {
+		set := make(map[string]bool, len(u.Models))
+		for _, m := range u.Models {
+			set[m] = true
+		}
+		upstreamModels[u.Name] = set
+	}
 	for _, p := range cfg.Projects {
-		for reqModel, cfgList := range p.ModelMap {
-			if len(cfgList) == 0 {
+		for reqModel, list := range p.ModelMap {
+			if len(list) == 0 {
 				return fmt.Errorf("projects.%s.model_map.%s: cfg 列表不能为空", p.Name, reqModel)
 			}
-			for _, cfgName := range cfgList {
-				if !seenUpstream[cfgName] {
-					return fmt.Errorf("projects.%s.model_map.%s: 引用了不存在的 cfg %q", p.Name, reqModel, cfgName)
+			for _, entry := range list {
+				up, model, ok := ParseUpstreamModel(entry)
+				if !ok {
+					return fmt.Errorf("projects.%s.model_map.%s: %q 格式错误，应为 upstream/model", p.Name, reqModel, entry)
 				}
-			}
-		}
-	}
-
-	// 5.1 model_map 别名不得与 upstream.name 冲突（保证 allow_direct_access 路由无歧义）
-	for _, p := range cfg.Projects {
-		for reqModel := range p.ModelMap {
-			if seenUpstream[reqModel] {
-				return fmt.Errorf(
-					"projects.%s.model_map: 别名 %q 与 upstream 名冲突"+
-						"（allow_direct_access 要求别名与 cfg 名空间不重叠）",
-					p.Name, reqModel,
-				)
+				models, exists := upstreamModels[up]
+				if !exists {
+					return fmt.Errorf("projects.%s.model_map.%s: 引用了不存在的 upstream %q", p.Name, reqModel, up)
+				}
+				if !models[model] {
+					return fmt.Errorf("projects.%s.model_map.%s: upstream %q 不提供模型 %q", p.Name, reqModel, up, model)
+				}
 			}
 		}
 	}

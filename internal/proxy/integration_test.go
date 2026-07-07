@@ -49,7 +49,7 @@ func TestIntegration_FullFlow(t *testing.T) {
 	}
 	keys := map[string]string{"sk-cs-myproject": "myproject"}
 	projMap := map[string]map[string][]string{
-		"myproject": {"my-model-alias": {"cfg1"}},
+		"myproject": {"my-model-alias": {"cfg1/claude-opus-4-8"}},
 	}
 
 	authStore := auth.NewStore(keys)
@@ -101,7 +101,7 @@ func TestIntegration_StreamingFullFlow(t *testing.T) {
 		"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k1", Models: []string{"real-m"}, Timeout: 5 * time.Second},
 	}
 	keys := map[string]string{"sk-cs-p1": "p1"}
-	projMap := map[string]map[string][]string{"p1": {"m": {"cfg1"}}}
+	projMap := map[string]map[string][]string{"p1": {"m": {"cfg1/real-m"}}}
 
 	handler := NewHandler(
 		auth.NewStore(keys),
@@ -164,20 +164,20 @@ func TestIntegration_DirectAccess_FullFlow(t *testing.T) {
 	routes := map[string]project.ProjectRoute{
 		"myproject": {
 			AllowDirect: true,
-			ModelMap:    map[string][]string{"my-model-alias": {"cfg1"}},
+			ModelMap:    map[string][]project.ResolvedTarget{"my-model-alias": {{Upstream: "cfg1", Model: "claude-opus-4-8"}}},
 		},
 	}
-	upstreamNames := map[string]bool{"cfg1": true}
+	modelUpstreams := map[string][]string{"claude-opus-4-8": {"cfg1"}}
 
 	authStore := auth.NewStore(keys)
-	resolver := project.NewResolver(routes, upstreamNames)
+	resolver := project.NewResolver(routes, modelUpstreams)
 	lookup := &configLookup{upstreams: cfgUpstreams}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
 	handler := NewHandler(authStore, resolver, lookup, fwd, log)
 
-	// 请求 model 直接用 cfg name "cfg1"
-	reqBody := `{"model":"cfg1","max_tokens":100,"messages":[{"role":"user","content":"hello"}]}`
+	// 请求 model 直接用真实模型名 "claude-opus-4-8"
+	reqBody := `{"model":"claude-opus-4-8","max_tokens":100,"messages":[{"role":"user","content":"hello"}]}`
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(reqBody))
 	req.Header.Set("x-api-key", "sk-cs-myproject")
 	req.Header.Set("content-type", "application/json")
@@ -207,7 +207,7 @@ func TestIntegration_DirectAccess_HotReloadDisable(t *testing.T) {
 	cfgUpstreams := map[string]config.Upstream{
 		"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k", Models: []string{"claude-opus-4-8"}, Timeout: 5 * time.Second},
 	}
-	upstreamNames := map[string]bool{"cfg1": true}
+	modelUpstreams := map[string][]string{"claude-opus-4-8": {"cfg1"}}
 	keys := map[string]string{"sk-cs-myproject": "myproject"}
 	authStore := auth.NewStore(keys)
 	lookup := &configLookup{upstreams: cfgUpstreams}
@@ -216,11 +216,11 @@ func TestIntegration_DirectAccess_HotReloadDisable(t *testing.T) {
 
 	// 初始：开启直连
 	routesOn := map[string]project.ProjectRoute{
-		"myproject": {AllowDirect: true, ModelMap: map[string][]string{}},
+		"myproject": {AllowDirect: true, ModelMap: map[string][]project.ResolvedTarget{}},
 	}
-	handlerOn := NewHandler(authStore, project.NewResolver(routesOn, upstreamNames), lookup, fwd, log)
+	handlerOn := NewHandler(authStore, project.NewResolver(routesOn, modelUpstreams), lookup, fwd, log)
 
-	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"cfg1"}`))
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-8"}`))
 	req.Header.Set("x-api-key", "sk-cs-myproject")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
@@ -231,11 +231,11 @@ func TestIntegration_DirectAccess_HotReloadDisable(t *testing.T) {
 
 	// 热重载后：关闭直连
 	routesOff := map[string]project.ProjectRoute{
-		"myproject": {AllowDirect: false, ModelMap: map[string][]string{}},
+		"myproject": {AllowDirect: false, ModelMap: map[string][]project.ResolvedTarget{}},
 	}
-	handlerOff := NewHandler(authStore, project.NewResolver(routesOff, upstreamNames), lookup, fwd, log)
+	handlerOff := NewHandler(authStore, project.NewResolver(routesOff, modelUpstreams), lookup, fwd, log)
 
-	req2 := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"cfg1"}`))
+	req2 := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-8"}`))
 	req2.Header.Set("x-api-key", "sk-cs-myproject")
 	req2.Header.Set("content-type", "application/json")
 	rec2 := httptest.NewRecorder()

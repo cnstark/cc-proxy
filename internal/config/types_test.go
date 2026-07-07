@@ -29,7 +29,7 @@ func TestValidate_Success(t *testing.T) {
 			{
 				Name: "project1", LogLevel: LogMeta,
 				ModelMap: map[string][]string{
-					"modelA": {"cfg1", "cfg2"},
+					"modelA": {"cfg1/claude-opus-4-8", "cfg2/claude-sonnet-4-6"},
 				},
 			},
 		},
@@ -48,7 +48,7 @@ func TestValidate_DuplicateUpstreamName(t *testing.T) {
 			{Name: "cfg1", URL: "https://b.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 30 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -64,7 +64,7 @@ func TestValidate_DanglingUpstreamRef(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1", "cfg_nonexistent"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1", "cfg_nonexistent/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -80,7 +80,7 @@ func TestValidate_NoPrivateKeys(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -99,7 +99,7 @@ func TestValidate_PrivateKeyPointsToMissingProject(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -115,8 +115,8 @@ func TestValidate_DuplicateProjectName(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
-			{Name: "p1", ModelMap: map[string][]string{"m2": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m2": {"cfg1/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -132,7 +132,7 @@ func TestValidate_DuplicateModelMapKey(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"modelA": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"modelA": {"cfg1/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -148,7 +148,7 @@ func TestValidate_EmptyUpstreamName(t *testing.T) {
 			{Name: "", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	err := Validate(cfg)
@@ -168,8 +168,8 @@ func TestValidate_DuplicatePrivateKey(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
-			{Name: "p2", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
+			{Name: "p2", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	// Go 语法不允许 literal 重复 key，因此无法在编译期构造出重复 private key 的情形。
@@ -196,7 +196,7 @@ projects:
   - name: project1
     log_level: meta
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/claude-opus-4-8]
 `
 	path := t.TempDir() + "/config.yaml"
 
@@ -270,7 +270,7 @@ projects:
   - name: project1
     log_level: off
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/m1]
 `
 	if err := os.WriteFile(path, []byte(initialYAML), 0600); err != nil {
 		t.Fatal(err)
@@ -301,7 +301,7 @@ projects:
   - name: project1
     log_level: off
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/m2-updated]
 `
 	time.Sleep(100 * time.Millisecond) // ensure mtime differs
 	if err := os.WriteFile(path, []byte(updatedYAML), 0600); err != nil {
@@ -340,7 +340,7 @@ projects:
   - name: project1
     log_level: off
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/m1]
 `
 	os.WriteFile(path, []byte(validYAML), 0600)
 
@@ -383,7 +383,7 @@ projects:
   - name: project1
     log_level: off
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/m1]
 `
 	os.WriteFile(path, []byte(validYAML), 0600)
 
@@ -412,7 +412,7 @@ upstreams:
 projects:
   - name: project1
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/m1]
 `))
 	if err != nil {
 		t.Fatalf("unexpected load error: %v", err)
@@ -430,7 +430,7 @@ server:
 upstreams:
   - {name: cfg1, url: https://a.com, apikey: k1, models: [m1], timeout: 60s}
 projects:
-  - {name: project1, model_map: {modelA: [cfg1]}}
+  - {name: project1, model_map: {modelA: [cfg1/m1]}}
 `))
 	if err != nil {
 		t.Fatalf("unexpected load error: %v", err)
@@ -448,7 +448,7 @@ func TestValidate_RetryBackoff_Valid(t *testing.T) {
 				RetryBackoff: []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute}},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	if err := Validate(cfg); err != nil {
@@ -464,7 +464,7 @@ func TestValidate_RetryBackoff_TooManyTiers(t *testing.T) {
 				RetryBackoff: []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second, 4 * time.Second, 5 * time.Second}},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	if err := Validate(cfg); err == nil {
@@ -480,7 +480,7 @@ func TestValidate_RetryBackoff_NegativeDuration(t *testing.T) {
 				RetryBackoff: []time.Duration{30 * time.Second, -1 * time.Second}},
 		},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}},
 		},
 	}
 	if err := Validate(cfg); err == nil {
@@ -505,7 +505,7 @@ projects:
   - name: project1
     log_level: off
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/claude-opus-4-8]
 `
 	snap, err := Load([]byte(yamlData))
 	if err != nil {
@@ -545,7 +545,7 @@ projects:
   - name: project1
     log_level: off
     model_map:
-      modelA: [cfg1]
+      modelA: [cfg1/claude-opus-4-8]
 `
 	snap, err := Load([]byte(yamlData))
 	if err != nil {
@@ -572,8 +572,8 @@ func TestNewSnapshot_ProjectLogLevelDefaults(t *testing.T) {
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
-			{Name: "p1", LogLevel: LogMeta, ModelMap: map[string][]string{"modelA": {"cfg1"}}},
-			{Name: "p2", LogLevel: "", ModelMap: map[string][]string{"modelA": {"cfg1"}}},
+			{Name: "p1", LogLevel: LogMeta, ModelMap: map[string][]string{"modelA": {"cfg1/m1"}}},
+			{Name: "p2", LogLevel: "", ModelMap: map[string][]string{"modelA": {"cfg1/m1"}}},
 		},
 	}
 
@@ -601,7 +601,7 @@ func TestValidate_ServerLogLevel_Invalid(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: "invalid", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
-		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected error for invalid server log_level")
@@ -612,24 +612,23 @@ func TestValidate_LogMaxDays_Negative(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: LogInfo, LogMaxDays: intPtr(-1), PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
-		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected error for negative log_max_days")
 	}
 }
 
-func TestValidate_ModelMapAliasCollidesWithUpstreamName(t *testing.T) {
+func TestValidate_ModelMapAliasCanEqualUpstreamName(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects: []Project{
-			{Name: "p1", ModelMap: map[string][]string{"cfg1": {"cfg1"}}},
+			{Name: "p1", ModelMap: map[string][]string{"cfg1": {"cfg1/m1"}}},
 		},
 	}
-	err := Validate(cfg)
-	if err == nil {
-		t.Fatal("expected error for model_map alias colliding with upstream name")
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("expected valid (alias may equal upstream name), got: %v", err)
 	}
 }
 
@@ -638,7 +637,7 @@ func TestValidate_AllowDirectAccess_TrueIsValid(t *testing.T) {
 		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects: []Project{
-			{Name: "p1", AllowDirectAccess: true, ModelMap: map[string][]string{"aliasA": {"cfg1"}}},
+			{Name: "p1", AllowDirectAccess: true, ModelMap: map[string][]string{"aliasA": {"cfg1/m1"}}},
 		},
 	}
 	if err := Validate(cfg); err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/cnstark/claude-switch/internal/circuitbreaker"
 	"github.com/cnstark/claude-switch/internal/config"
 	"github.com/cnstark/claude-switch/internal/logging"
+	"github.com/cnstark/claude-switch/internal/project"
 	"github.com/cnstark/claude-switch/internal/usage"
 )
 
@@ -23,7 +24,7 @@ type AuthStore interface {
 
 // ModelResolver 模型路由接口
 type ModelResolver interface {
-	Resolve(projectName, requestModel string) ([]string, bool)
+	Resolve(projectName, requestModel string) ([]project.ResolvedTarget, bool)
 }
 
 // ConfigLookup 配置查询接口
@@ -128,7 +129,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. 路由查表
-	cfgNames, ok := h.resolver.Resolve(projectName, requestModel)
+	targets, ok := h.resolver.Resolve(projectName, requestModel)
 	if !ok {
 		h.log.InfoContext(r.Context(), "model not found",
 			"model", requestModel,
@@ -148,17 +149,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 6. 依次尝试转发
 	allSkipped := true
-	for _, cfgName := range cfgNames {
-		cfg, ok := h.lookup.Upstream(cfgName)
+	for _, target := range targets {
+		cfg, ok := h.lookup.Upstream(target.Upstream)
 		if !ok {
 			continue
 		}
 
 		// 检查熔断器
 		if h.breaker != nil {
-			if avail, reason := h.breaker.IsAvailable(cfgName, cfg.RetryBackoff); !avail {
+			if avail, reason := h.breaker.IsAvailable(target.Upstream, cfg.RetryBackoff); !avail {
 				h.log.InfoContext(r.Context(), "circuit breaker skipped",
-					"upstream", cfgName,
+					"upstream", target.Upstream,
 					"reason", reason,
 				)
 				continue
@@ -166,18 +167,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		allSkipped = false
 
-		// 故障转移时更新 usage collector 的 model 为上游真实模型名
+		// 故障转移时更新 usage collector 的 model 为该目标真实模型名
 		if collector != nil {
-			collector.SetModel(cfg.Models[0])
+			collector.SetModel(target.Model)
 		}
-		rewrittenBody, err := rewriteRequestBody(body, cfg.Models[0])
+		rewrittenBody, err := rewriteRequestBody(body, target.Model)
 		if err != nil {
 			h.log.InfoContext(r.Context(), "rewrite failed", "error", err.Error())
 			writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 			return
 		}
 		h.log.DebugContext(r.Context(), "forwarding to upstream",
-			"upstream", cfgName,
+			"upstream", target.Upstream,
 			"upstream_url", cfg.URL,
 			"rewritten_body_len", len(rewrittenBody),
 			"rewritten_body_head", truncStr(string(rewrittenBody), 512),
@@ -188,11 +189,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		fwdErr := h.forwarder.Forward(cfg, rewrittenBody, reqHeaders, w, collector, h.log)
 		if fwdErr == nil {
-			attrs := append([]any{"model", requestModel, "upstream", cfgName}, tokenAttrs(collector)...)
+			attrs := append([]any{"model", requestModel, "upstream", target.Upstream}, tokenAttrs(collector)...)
 			h.log.InfoContext(r.Context(), "request forwarded", attrs...)
 			// 记录成功
 			if h.breaker != nil {
-				if msg := h.breaker.RecordSuccess(cfgName); msg != "" {
+				if msg := h.breaker.RecordSuccess(target.Upstream); msg != "" {
 					h.log.InfoContext(r.Context(), msg)
 				}
 			}
@@ -204,37 +205,37 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var startedErr *ResponseStartedError
 		if errors.As(fwdErr, &startedErr) {
 			h.log.InfoContext(r.Context(), "upstream failed after response started, aborting failover",
-				"upstream", cfgName,
+				"upstream", target.Upstream,
 				"error", startedErr.Err.Error(),
 			)
 			return
 		}
 		h.log.InfoContext(r.Context(), "upstream failed, trying next",
-			"upstream", cfgName,
+			"upstream", target.Upstream,
 			"error", fwdErr.Error(),
 		)
 
 		// 记录失败（可重试错误）
 		if h.breaker != nil {
-			if msg := h.breaker.RecordFailure(cfgName, cfg.RetryBackoff); msg != "" {
+			if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {
 				h.log.InfoContext(r.Context(), msg)
 			}
 		}
 	}
 
-	// 兜底逻辑：全部被跳过时强制探测第一个 upstream
-	if allSkipped && h.breaker != nil && len(cfgNames) > 0 {
-		cfgName := cfgNames[0]
-		cfg, ok := h.lookup.Upstream(cfgName)
+	// 兜底逻辑：全部被跳过时强制探测第一个 target
+	if allSkipped && h.breaker != nil && len(targets) > 0 {
+		target := targets[0]
+		cfg, ok := h.lookup.Upstream(target.Upstream)
 		if ok {
 			h.log.InfoContext(r.Context(), "all upstreams in backoff, forcing probe",
-				"upstream", cfgName,
+				"upstream", target.Upstream,
 			)
 
 			if collector != nil {
-				collector.SetModel(cfg.Models[0])
+				collector.SetModel(target.Model)
 			}
-			rewrittenBody, err := rewriteRequestBody(body, cfg.Models[0])
+			rewrittenBody, err := rewriteRequestBody(body, target.Model)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 				return
@@ -244,16 +245,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			fwdErr := h.forwarder.Forward(cfg, rewrittenBody, reqHeaders, w, collector, h.log)
 			if fwdErr == nil {
-				attrs := append([]any{"model", requestModel, "upstream", cfgName}, tokenAttrs(collector)...)
+				attrs := append([]any{"model", requestModel, "upstream", target.Upstream}, tokenAttrs(collector)...)
 				h.log.InfoContext(r.Context(), "forced probe succeeded", attrs...)
-				if msg := h.breaker.RecordSuccess(cfgName); msg != "" {
+				if msg := h.breaker.RecordSuccess(target.Upstream); msg != "" {
 					h.log.InfoContext(r.Context(), msg)
 				}
 				return
 			}
 			var startedErr *ResponseStartedError
 			if !errors.As(fwdErr, &startedErr) {
-				if msg := h.breaker.RecordFailure(cfgName, cfg.RetryBackoff); msg != "" {
+				if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {
 					h.log.InfoContext(r.Context(), msg)
 				}
 			}

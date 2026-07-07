@@ -107,8 +107,8 @@ func defaultConfigContent(privateKey string) string {
 # 使用 "cs" 命令管理配置，或直接编辑此文件后重启 cs-proxy（自动热重载）
 #
 # 快速上手：
-#   1. cs upstream add <name> --url ... --apikey ... --model ...   # 添加上游 API
-#   2. cs mapping add default <请求模型名> <上游名>                  # 配置模型路由
+#   1. cs upstream add <name> --url ... --apikey ... --model ...   # 添加上游（--model 可多次指定）
+#   2. cs mapping add default <请求模型名> <upstream/model>          # 配置模型路由
 #   3. cs proxy start                                               # 启动代理
 #
 # 详细文档：https://github.com/cnstark/claude-switch
@@ -128,16 +128,19 @@ server:
 #   - name: anthropic
 #     url: https://api.anthropic.com
 #     apikey: sk-ant-your-api-key-here
-#     model: claude-sonnet-4-6
+#     timeout: 60s
+#     models:
+#       - claude-sonnet-4-6
+#       - claude-opus-4-8
 
 projects:
   - name: default
     log_level: off
     model_map: {}
-    # allow_direct_access: false  # 开启后可用 upstream.name 直接访问（无需配别名）
-    # 示例 model_map，添加上游后按如下格式配置：
+    # allow_direct_access: false  # 开启后可用真实模型名直接访问（无需配别名）
+    # 示例 model_map，添加上游后按如下格式配置（值为 upstream/model）：
     # model_map:
-    #   claude-sonnet-4-6:
-    #     - anthropic
+    #   my-alias:
+    #     - anthropic/claude-sonnet-4-6
 `, privateKey)
 }

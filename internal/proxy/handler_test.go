@@ -32,12 +32,23 @@ func (c *configLookup) Upstream(name string) (config.Upstream, bool) {
 	return u, ok
 }
 
-// newAliasResolver 从旧的「项目 → 别名表」结构构造无直连的 resolver，
-// 供不涉及直连的测试沿用旧调用形式。AllowDirect=false，upstreamNames=nil。
+// newAliasResolver 从「项目 → 别名表」结构构造无直连的 resolver。
+// 输入为 raw 字符串（upstream/model），内部预解析为 ResolvedTarget（与 hotreload 一致）。
+// AllowDirect=false，modelUpstreams=nil。
 func newAliasResolver(projMap map[string]map[string][]string) *project.ModelResolver {
 	routes := make(map[string]project.ProjectRoute, len(projMap))
 	for name, mm := range projMap {
-		routes[name] = project.ProjectRoute{ModelMap: mm}
+		parsed := make(map[string][]project.ResolvedTarget, len(mm))
+		for alias, list := range mm {
+			targets := make([]project.ResolvedTarget, 0, len(list))
+			for _, s := range list {
+				if up, model, ok := config.ParseUpstreamModel(s); ok {
+					targets = append(targets, project.ResolvedTarget{Upstream: up, Model: model})
+				}
+			}
+			parsed[alias] = targets
+		}
+		routes[name] = project.ProjectRoute{ModelMap: parsed}
 	}
 	return project.NewResolver(routes, nil)
 }
@@ -84,7 +95,7 @@ func TestHandler_UnknownModel_404(t *testing.T) {
 	h := setupTestHandler(
 		map[string]string{"sk-cs-key1": "p1"},
 		map[string]map[string][]string{
-			"p1": {"knownModel": {"cfg1"}},
+			"p1": {"knownModel": {"cfg1/real-m"}},
 		},
 		map[string]config.Upstream{
 			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
@@ -124,7 +135,7 @@ func TestHandler_BearerTokenAuth_Success(t *testing.T) {
 	h := setupTestHandler(
 		map[string]string{"sk-cs-key1": "p1"},
 		map[string]map[string][]string{
-			"p1": {"m": {"cfg1"}},
+			"p1": {"m": {"cfg1/real-m"}},
 		},
 		map[string]config.Upstream{
 			"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
@@ -167,7 +178,7 @@ func TestHandler_XAPIKeyTakesPrecedence(t *testing.T) {
 	h := setupTestHandler(
 		map[string]string{"sk-cs-key1": "p1"},
 		map[string]map[string][]string{
-			"p1": {"m": {"cfg1"}},
+			"p1": {"m": {"cfg1/real-m"}},
 		},
 		map[string]config.Upstream{
 			"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
@@ -207,7 +218,7 @@ func TestHandler_Failover_CountsOnce(t *testing.T) {
 	rec := &usageFakeRecorder{}
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}}),
+		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder:    NewStreamingForwarder(),
 		log:          logging.NewNopLogger(),
@@ -248,7 +259,7 @@ func TestHandler_ErrorResponsePassthrough_NoCount(t *testing.T) {
 	rec := &usageFakeRecorder{}
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          logging.NewNopLogger(),
@@ -299,7 +310,7 @@ projects:
   - name: p1
     log_level: off
     model_map:
-      m: [cfg1]
+      m: [cfg1/real]
 `, ts.URL)
 	os.WriteFile(configPath, []byte(cfgYAML), 0600)
 
@@ -342,7 +353,7 @@ projects:
 func TestHandler_MissingModelField_400(t *testing.T) {
 	h := setupTestHandler(
 		map[string]string{"sk-cs-key1": "p1"},
-		map[string]map[string][]string{"p1": {"m": {"cfg1"}}},
+		map[string]map[string][]string{"p1": {"m": {"cfg1/real-m"}}},
 		map[string]config.Upstream{
 			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 		},
@@ -390,7 +401,7 @@ func TestBreaker_BackoffSkipsUpstream(t *testing.T) {
 
 	h := &Handler{
 		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder: NewStreamingForwarder(),
 		log:       logging.NewNopLogger(),
@@ -445,7 +456,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 
 	h503 := &Handler{
 		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg503}},
 		forwarder: NewStreamingForwarder(),
 		log:       logging.NewNopLogger(),
@@ -472,7 +483,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 	}
 	h := &Handler{
 		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg200}},
 		forwarder: NewStreamingForwarder(),
 		log:       logging.NewNopLogger(),
@@ -506,7 +517,7 @@ func TestBreaker_NoBackoffUpstream_NotAffected(t *testing.T) {
 
 	h := &Handler{
 		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
 		forwarder: NewStreamingForwarder(),
 		log:       logging.NewNopLogger(),
@@ -552,7 +563,7 @@ func TestBreaker_4xxNotCounted(t *testing.T) {
 
 	h := &Handler{
 		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder: NewStreamingForwarder(),
 		log:       logging.NewNopLogger(),
@@ -614,7 +625,7 @@ func TestHandler_Forwarded_NoDuplicateProjectField(t *testing.T) {
 	var buf bytes.Buffer
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
@@ -662,7 +673,7 @@ func TestHandler_Forwarded_LogsTokenFields(t *testing.T) {
 	var buf bytes.Buffer
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
@@ -706,7 +717,7 @@ func TestHandler_UsageDisabled_LogsTokensWithoutPersisting(t *testing.T) {
 	var buf bytes.Buffer
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
@@ -746,7 +757,7 @@ func TestHandler_NoUsage_LogsUnknownToken(t *testing.T) {
 	var buf bytes.Buffer
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
-		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
+		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
@@ -772,7 +783,7 @@ func TestHandler_NoUsage_LogsUnknownToken(t *testing.T) {
 }
 
 func TestHandler_DirectAccess_ForwardsToUpstream(t *testing.T) {
-	// 直接访问：请求 model = cfg name "cfg1"，应转发到 cfg1 并把 body model 改写为真实 Model "real-m"
+	// 直接访问：请求 model = 真实模型名 "real-m"，应转发到 cfg1 并把 body model 改写为 "real-m"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != "upstream-key" {
 			w.WriteHeader(401)
@@ -796,10 +807,10 @@ func TestHandler_DirectAccess_ForwardsToUpstream(t *testing.T) {
 		"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "upstream-key", Models: []string{"real-m"}, Timeout: 5 * time.Second},
 	}
 	routes := map[string]project.ProjectRoute{
-		"p1": {AllowDirect: true, ModelMap: map[string][]string{"aliasA": {"cfg1"}}},
+		"p1": {AllowDirect: true, ModelMap: map[string][]project.ResolvedTarget{"aliasA": {{Upstream: "cfg1", Model: "real-m"}}}},
 	}
-	upstreamNames := map[string]bool{"cfg1": true}
-	resolver := project.NewResolver(routes, upstreamNames)
+	modelUpstreams := map[string][]string{"real-m": {"cfg1"}}
+	resolver := project.NewResolver(routes, modelUpstreams)
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
 	lookup := &configLookup{upstreams: upstreams}
@@ -807,7 +818,7 @@ func TestHandler_DirectAccess_ForwardsToUpstream(t *testing.T) {
 	log := logging.NewNopLogger()
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
-	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"cfg1","max_tokens":100}`))
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"real-m","max_tokens":100}`))
 	req.Header.Set("x-api-key", "sk-cs-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
@@ -828,10 +839,9 @@ func TestHandler_DirectAccess_Disabled_Returns404(t *testing.T) {
 		"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 	}
 	routes := map[string]project.ProjectRoute{
-		"p1": {AllowDirect: false, ModelMap: map[string][]string{"aliasA": {"cfg1"}}},
+		"p1": {AllowDirect: false, ModelMap: map[string][]project.ResolvedTarget{"aliasA": {{Upstream: "cfg1", Model: "real-m"}}}},
 	}
-	upstreamNames := map[string]bool{"cfg1": true}
-	resolver := project.NewResolver(routes, upstreamNames)
+	resolver := project.NewResolver(routes, nil)
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
 	lookup := &configLookup{upstreams: upstreams}
@@ -839,7 +849,7 @@ func TestHandler_DirectAccess_Disabled_Returns404(t *testing.T) {
 	log := logging.NewNopLogger()
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
-	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"cfg1"}`))
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"real-m"}`))
 	req.Header.Set("x-api-key", "sk-cs-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()

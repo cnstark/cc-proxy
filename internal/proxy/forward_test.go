@@ -91,7 +91,7 @@ func TestForward_BasicPassthrough(t *testing.T) {
 	}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"aliasModel": {"cfg1"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"aliasModel": {"cfg1/real-model"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -132,7 +132,7 @@ func TestForward_StreamingSSE(t *testing.T) {
 
 	cfg := config.Upstream{Name: "cfg1", URL: ts.URL, APIKey: "sk-upstream", Models: []string{"real-model"}, Timeout: 5 * time.Second}
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real-model"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -193,7 +193,7 @@ func TestFailover_ResponseBodyStarted_NoFailover(t *testing.T) {
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -229,7 +229,7 @@ func TestFailover_FirstFails_FallbackSucceeds(t *testing.T) {
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -254,7 +254,7 @@ func TestFailover_AllFail_502(t *testing.T) {
 	cfg2 := config.Upstream{Name: "cfg2", URL: "http://127.0.0.1:19999", APIKey: "k2", Models: []string{"m2"}, Timeout: 50 * time.Millisecond}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -387,7 +387,7 @@ func TestFailover_FirstReturns5xx_FallbackSucceeds(t *testing.T) {
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -427,7 +427,7 @@ func TestFailover_FirstReturns429_FallbackSucceeds(t *testing.T) {
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()
@@ -469,7 +469,7 @@ func TestFailover_FirstReturns401_NoFailover(t *testing.T) {
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
 	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
-	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1", "cfg2"}}})
+	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
 	log := logging.NewNopLogger()

@@ -59,16 +59,22 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Build resolver from current snapshot
 	routes := make(map[string]project.ProjectRoute, len(snap.Projects))
 	for name, p := range snap.Projects {
+		parsed := make(map[string][]project.ResolvedTarget, len(p.ModelMap))
+		for alias, list := range p.ModelMap {
+			targets := make([]project.ResolvedTarget, 0, len(list))
+			for _, s := range list {
+				if up, model, ok := config.ParseUpstreamModel(s); ok {
+					targets = append(targets, project.ResolvedTarget{Upstream: up, Model: model})
+				}
+			}
+			parsed[alias] = targets
+		}
 		routes[name] = project.ProjectRoute{
-			ModelMap:    p.ModelMap,
+			ModelMap:    parsed,
 			AllowDirect: p.AllowDirectAccess,
 		}
 	}
-	upstreamNames := make(map[string]bool, len(snap.Upstreams))
-	for name := range snap.Upstreams {
-		upstreamNames[name] = true
-	}
-	resolver := project.NewResolver(routes, upstreamNames)
+	resolver := project.NewResolver(routes, snap.ModelUpstreams)
 	lookup := &snapshotLookup{snap: snap}
 
 	// 生成 request_id：优先透传上游 x-request-id，fallback 自生成
