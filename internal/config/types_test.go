@@ -22,8 +22,8 @@ func TestValidate_Success(t *testing.T) {
 			},
 		},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://api.anthropic.com", APIKey: "sk-ant-xxx", Model: "claude-opus-4-8", Timeout: 60 * time.Second},
-			{Name: "cfg2", URL: "https://other.com", APIKey: "sk-xxx", Model: "claude-sonnet-4-6", Timeout: 30 * time.Second},
+			{Name: "cfg1", URL: "https://api.anthropic.com", APIKey: "sk-ant-xxx", Models: []string{"claude-opus-4-8"}, Timeout: 60 * time.Second},
+			{Name: "cfg2", URL: "https://other.com", APIKey: "sk-xxx", Models: []string{"claude-sonnet-4-6"}, Timeout: 30 * time.Second},
 		},
 		Projects: []Project{
 			{
@@ -44,8 +44,8 @@ func TestValidate_DuplicateUpstreamName(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
-			{Name: "cfg1", URL: "https://b.com", APIKey: "k2", Model: "m2", Timeout: 30 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://b.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 30 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
@@ -61,7 +61,7 @@ func TestValidate_DanglingUpstreamRef(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1", "cfg_nonexistent"}}},
@@ -77,7 +77,7 @@ func TestValidate_NoPrivateKeys(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787"},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
@@ -96,7 +96,7 @@ func TestValidate_PrivateKeyPointsToMissingProject(t *testing.T) {
 			PrivateKeys: map[string]string{"sk-cs-key1": "nonexistent_project"},
 		},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
@@ -112,7 +112,7 @@ func TestValidate_DuplicateProjectName(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
@@ -129,7 +129,7 @@ func TestValidate_DuplicateModelMapKey(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"modelA": {"cfg1"}}},
@@ -145,7 +145,7 @@ func TestValidate_EmptyUpstreamName(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
@@ -165,7 +165,7 @@ func TestValidate_DuplicatePrivateKey(t *testing.T) {
 			PrivateKeys: map[string]string{"sk-cs-key1": "p2"},
 		},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}},
@@ -190,7 +190,7 @@ upstreams:
   - name: cfg1
     url: https://api.anthropic.com
     apikey: sk-ant-xxx
-    model: claude-opus-4-8
+    models: [claude-opus-4-8]
     timeout: 60s
 projects:
   - name: project1
@@ -210,8 +210,8 @@ projects:
 	if len(snap.Upstreams) != 1 {
 		t.Fatalf("expected 1 upstream, got %d", len(snap.Upstreams))
 	}
-	if snap.Upstreams["cfg1"].Model != "claude-opus-4-8" {
-		t.Fatalf("expected model claude-opus-4-8, got %s", snap.Upstreams["cfg1"].Model)
+	if snap.Upstreams["cfg1"].Models[0] != "claude-opus-4-8" {
+		t.Fatalf("expected model claude-opus-4-8, got %s", snap.Upstreams["cfg1"].Models[0])
 	}
 
 	// Test Save (atomic write)
@@ -264,7 +264,7 @@ upstreams:
   - name: cfg1
     url: https://a.com
     apikey: k1
-    model: m1
+    models: [m1]
     timeout: 60s
 projects:
   - name: project1
@@ -281,8 +281,8 @@ projects:
 	if err != nil {
 		t.Fatalf("initial load failed: %v", err)
 	}
-	if snap.Upstreams["cfg1"].Model != "m1" {
-		t.Fatalf("expected model m1, got %s", snap.Upstreams["cfg1"].Model)
+	if snap.Upstreams["cfg1"].Models[0] != "m1" {
+		t.Fatalf("expected model m1, got %s", snap.Upstreams["cfg1"].Models[0])
 	}
 
 	// Modify file
@@ -295,7 +295,7 @@ upstreams:
   - name: cfg1
     url: https://a.com
     apikey: k1
-    model: m2-updated
+    models: [m2-updated]
     timeout: 60s
 projects:
   - name: project1
@@ -315,8 +315,8 @@ projects:
 	if err != nil {
 		t.Fatalf("reload failed: %v", err)
 	}
-	if snap2.Upstreams["cfg1"].Model != "m2-updated" {
-		t.Fatalf("expected model m2-updated after reload, got %s", snap2.Upstreams["cfg1"].Model)
+	if snap2.Upstreams["cfg1"].Models[0] != "m2-updated" {
+		t.Fatalf("expected model m2-updated after reload, got %s", snap2.Upstreams["cfg1"].Models[0])
 	}
 	w.Stop()
 }
@@ -334,7 +334,7 @@ upstreams:
   - name: cfg1
     url: https://a.com
     apikey: k1
-    model: m1
+    models: [m1]
     timeout: 60s
 projects:
   - name: project1
@@ -360,7 +360,7 @@ projects:
 	if err != nil {
 		t.Fatal("expected old config to be retained")
 	}
-	if snap.Upstreams["cfg1"].Model != "m1" {
+	if snap.Upstreams["cfg1"].Models[0] != "m1" {
 		t.Fatal("expected old config to be preserved after invalid reload")
 	}
 }
@@ -377,7 +377,7 @@ upstreams:
   - name: cfg1
     url: https://a.com
     apikey: k1
-    model: m1
+    models: [m1]
     timeout: 60s
 projects:
   - name: project1
@@ -407,7 +407,7 @@ upstreams:
   - name: cfg1
     url: https://a.com
     apikey: k1
-    model: m1
+    models: [m1]
     timeout: 60s
 projects:
   - name: project1
@@ -428,7 +428,7 @@ server:
   private_keys:
     sk-cs-key1: project1
 upstreams:
-  - {name: cfg1, url: https://a.com, apikey: k1, model: m1, timeout: 60s}
+  - {name: cfg1, url: https://a.com, apikey: k1, models: [m1], timeout: 60s}
 projects:
   - {name: project1, model_map: {modelA: [cfg1]}}
 `))
@@ -444,7 +444,7 @@ func TestValidate_RetryBackoff_Valid(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second,
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second,
 				RetryBackoff: []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute}},
 		},
 		Projects: []Project{
@@ -460,7 +460,7 @@ func TestValidate_RetryBackoff_TooManyTiers(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second,
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second,
 				RetryBackoff: []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second, 4 * time.Second, 5 * time.Second}},
 		},
 		Projects: []Project{
@@ -476,7 +476,7 @@ func TestValidate_RetryBackoff_NegativeDuration(t *testing.T) {
 	cfg := Config{
 		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second,
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second,
 				RetryBackoff: []time.Duration{30 * time.Second, -1 * time.Second}},
 		},
 		Projects: []Project{
@@ -498,7 +498,7 @@ upstreams:
   - name: cfg1
     url: https://api.anthropic.com
     apikey: sk-ant-xxx
-    model: claude-opus-4-8
+    models: [claude-opus-4-8]
     timeout: 60s
     retry_backoff: [30s, 2m, 5m, 15m]
 projects:
@@ -539,7 +539,7 @@ upstreams:
   - name: cfg1
     url: https://api.anthropic.com
     apikey: sk-ant-xxx
-    model: claude-opus-4-8
+    models: [claude-opus-4-8]
     timeout: 60s
 projects:
   - name: project1
@@ -569,7 +569,7 @@ func TestNewSnapshot_ProjectLogLevelDefaults(t *testing.T) {
 			},
 		},
 		Upstreams: []Upstream{
-			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second},
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
 		Projects: []Project{
 			{Name: "p1", LogLevel: LogMeta, ModelMap: map[string][]string{"modelA": {"cfg1"}}},
@@ -600,7 +600,7 @@ func TestNewSnapshot_ProjectLogLevelDefaults(t *testing.T) {
 func TestValidate_ServerLogLevel_Invalid(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: "invalid", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
-		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}}},
 	}
 	if err := Validate(cfg); err == nil {
@@ -611,7 +611,7 @@ func TestValidate_ServerLogLevel_Invalid(t *testing.T) {
 func TestValidate_LogMaxDays_Negative(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: LogInfo, LogMaxDays: intPtr(-1), PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
-		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1"}}}},
 	}
 	if err := Validate(cfg); err == nil {
@@ -622,7 +622,7 @@ func TestValidate_LogMaxDays_Negative(t *testing.T) {
 func TestValidate_ModelMapAliasCollidesWithUpstreamName(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
-		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"cfg1": {"cfg1"}}},
 		},
@@ -636,7 +636,7 @@ func TestValidate_ModelMapAliasCollidesWithUpstreamName(t *testing.T) {
 func TestValidate_AllowDirectAccess_TrueIsValid(t *testing.T) {
 	cfg := Config{
 		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
-		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Model: "m1", Timeout: 60 * time.Second}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects: []Project{
 			{Name: "p1", AllowDirectAccess: true, ModelMap: map[string][]string{"aliasA": {"cfg1"}}},
 		},

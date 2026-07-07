@@ -77,7 +77,7 @@ func main() {
 			name := args[0]
 			url, _ := cmd.Flags().GetString("url")
 			apikey, _ := cmd.Flags().GetString("apikey")
-			model, _ := cmd.Flags().GetString("model")
+			models, _ := cmd.Flags().GetStringSlice("model")
 			timeout, _ := cmd.Flags().GetDuration("timeout")
 
 			cfg, err := loadConfig()
@@ -90,7 +90,7 @@ func main() {
 				}
 			}
 			cfg.Upstreams = append(cfg.Upstreams, config.Upstream{
-				Name: name, URL: url, APIKey: apikey, Model: model, Timeout: timeout,
+				Name: name, URL: url, APIKey: apikey, Models: models, Timeout: timeout,
 			})
 			if err := config.Validate(cfg); err != nil {
 				return err
@@ -100,7 +100,7 @@ func main() {
 	}
 	upstreamAddCmd.Flags().String("url", "", "上游 API URL（必填）")
 	upstreamAddCmd.Flags().String("apikey", "", "上游 API key（必填）")
-	upstreamAddCmd.Flags().String("model", "", "上游真实模型名（必填）")
+	upstreamAddCmd.Flags().StringSlice("model", nil, "上游真实模型名（必填，可多次指定 --model）")
 	upstreamAddCmd.Flags().Duration("timeout", 60*time.Second, "请求超时")
 	upstreamAddCmd.MarkFlagRequired("url")
 	upstreamAddCmd.MarkFlagRequired("apikey")
@@ -119,7 +119,7 @@ func main() {
 				return nil
 			}
 			for _, u := range cfg.Upstreams {
-				fmt.Printf("%-10s  %-40s  %-20s  %s\n", u.Name, u.URL, u.Model, u.Timeout)
+				fmt.Printf("%-10s  %-40s  %-20s  %s\n", u.Name, u.URL, strings.Join(u.Models, ", "), u.Timeout)
 			}
 			return nil
 		},
@@ -180,7 +180,7 @@ func main() {
 						cfg.Upstreams[i].APIKey = v.Value.String()
 					}
 					if v := cmd.Flags().Lookup("model"); v != nil && v.Changed {
-						cfg.Upstreams[i].Model = v.Value.String()
+						cfg.Upstreams[i].Models, _ = cmd.Flags().GetStringSlice("model")
 					}
 					if cmd.Flags().Changed("timeout") {
 						cfg.Upstreams[i].Timeout, _ = cmd.Flags().GetDuration("timeout")
@@ -199,7 +199,7 @@ func main() {
 	}
 	upstreamUpdateCmd.Flags().String("url", "", "新 URL")
 	upstreamUpdateCmd.Flags().String("apikey", "", "新 API key")
-	upstreamUpdateCmd.Flags().String("model", "", "新模型名")
+	upstreamUpdateCmd.Flags().StringSlice("model", nil, "新模型名列表（整体替换，可多次指定 --model）")
 	upstreamUpdateCmd.Flags().Duration("timeout", 0, "新超时")
 
 	upstreamCmd.AddCommand(upstreamAddCmd, upstreamListCmd, upstreamRemoveCmd, upstreamUpdateCmd)

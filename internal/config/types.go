@@ -18,7 +18,7 @@ type Upstream struct {
 	Name         string          `yaml:"name"`
 	URL          string          `yaml:"url"`
 	APIKey       string          `yaml:"apikey"`
-	Model        string          `yaml:"model"`
+	Models       []string        `yaml:"models"` // 该上游可服务的真实模型名列表（至少一个）
 	Timeout      time.Duration   `yaml:"timeout"`
 	RetryBackoff []time.Duration `yaml:"retry_backoff"` // 可选，最多 4 档退避时间；nil/空 = 关闭断路器
 }
@@ -50,10 +50,11 @@ type Config struct {
 
 // ConfigSnapshot 运行时快照，包含索引后的快速查找表
 type ConfigSnapshot struct {
-	Server    Server
-	Upstreams map[string]Upstream // name → Upstream
-	Projects  map[string]Project  // name → Project
-	Raw       Config              // 原始配置用于序列化
+	Server         Server
+	Upstreams      map[string]Upstream // name → Upstream
+	Projects       map[string]Project  // name → Project
+	ModelUpstreams map[string][]string // 真实模型名 → 有序 upstream 名（按配置顺序），供直接访问 O(1) 查表
+	Raw            Config              // 原始配置用于序列化
 }
 
 // NewSnapshot 从 Config 构造索引后的快照
@@ -89,10 +90,18 @@ func NewSnapshot(cfg Config) ConfigSnapshot {
 		d := 7
 		cfg.Server.LogMaxDays = &d
 	}
+	// model → 有序 upstream 名反查表（按 upstream 在配置里的出现顺序）
+	modelUps := make(map[string][]string)
+	for _, u := range cfg.Upstreams {
+		for _, m := range u.Models {
+			modelUps[m] = append(modelUps[m], u.Name)
+		}
+	}
 	return ConfigSnapshot{
-		Server:    cfg.Server,
-		Upstreams: us,
-		Projects:  ps,
-		Raw:       cfg,
+		Server:         cfg.Server,
+		Upstreams:      us,
+		Projects:       ps,
+		ModelUpstreams: modelUps,
+		Raw:            cfg,
 	}
 }

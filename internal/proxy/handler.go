@@ -168,9 +168,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// 故障转移时更新 usage collector 的 model 为上游真实模型名
 		if collector != nil {
-			collector.SetModel(cfg.Model)
+			collector.SetModel(cfg.Models[0])
 		}
-		rewrittenBody, err := rewriteRequestBody(body, cfg.Model)
+		rewrittenBody, err := rewriteRequestBody(body, cfg.Models[0])
 		if err != nil {
 			h.log.InfoContext(r.Context(), "rewrite failed", "error", err.Error())
 			writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
@@ -232,9 +232,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			)
 
 			if collector != nil {
-				collector.SetModel(cfg.Model)
+				collector.SetModel(cfg.Models[0])
 			}
-			rewrittenBody, err := rewriteRequestBody(body, cfg.Model)
+			rewrittenBody, err := rewriteRequestBody(body, cfg.Models[0])
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 				return

@@ -44,7 +44,7 @@ func TestIntegration_FullFlow(t *testing.T) {
 	cfgUpstreams := map[string]config.Upstream{
 		"cfg1": {
 			Name: "cfg1", URL: ts1.URL, APIKey: "sk-real-upstream",
-			Model: "claude-opus-4-8", Timeout: 5 * time.Second,
+			Models: []string{"claude-opus-4-8"}, Timeout: 5 * time.Second,
 		},
 	}
 	keys := map[string]string{"sk-cs-myproject": "myproject"}
@@ -98,7 +98,7 @@ func TestIntegration_StreamingFullFlow(t *testing.T) {
 	defer ts.Close()
 
 	cfgUpstreams := map[string]config.Upstream{
-		"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k1", Model: "real-m", Timeout: 5 * time.Second},
+		"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k1", Models: []string{"real-m"}, Timeout: 5 * time.Second},
 	}
 	keys := map[string]string{"sk-cs-p1": "p1"}
 	projMap := map[string]map[string][]string{"p1": {"m": {"cfg1"}}}
@@ -157,7 +157,7 @@ func TestIntegration_DirectAccess_FullFlow(t *testing.T) {
 	cfgUpstreams := map[string]config.Upstream{
 		"cfg1": {
 			Name: "cfg1", URL: ts1.URL, APIKey: "sk-real-upstream",
-			Model: "claude-opus-4-8", Timeout: 5 * time.Second,
+			Models: []string{"claude-opus-4-8"}, Timeout: 5 * time.Second,
 		},
 	}
 	keys := map[string]string{"sk-cs-myproject": "myproject"}
@@ -205,7 +205,7 @@ func TestIntegration_DirectAccess_HotReloadDisable(t *testing.T) {
 	defer ts1.Close()
 
 	cfgUpstreams := map[string]config.Upstream{
-		"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k", Model: "claude-opus-4-8", Timeout: 5 * time.Second},
+		"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k", Models: []string{"claude-opus-4-8"}, Timeout: 5 * time.Second},
 	}
 	upstreamNames := map[string]bool{"cfg1": true}
 	keys := map[string]string{"sk-cs-myproject": "myproject"}

@@ -87,7 +87,7 @@ func TestHandler_UnknownModel_404(t *testing.T) {
 			"p1": {"knownModel": {"cfg1"}},
 		},
 		map[string]config.Upstream{
-			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Model: "real-m", Timeout: 0},
+			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 		},
 	)
 
@@ -127,7 +127,7 @@ func TestHandler_BearerTokenAuth_Success(t *testing.T) {
 			"p1": {"m": {"cfg1"}},
 		},
 		map[string]config.Upstream{
-			"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Model: "real-m", Timeout: 0},
+			"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 		},
 	)
 
@@ -170,7 +170,7 @@ func TestHandler_XAPIKeyTakesPrecedence(t *testing.T) {
 			"p1": {"m": {"cfg1"}},
 		},
 		map[string]config.Upstream{
-			"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Model: "real-m", Timeout: 0},
+			"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 		},
 	)
 
@@ -201,8 +201,8 @@ func TestHandler_Failover_CountsOnce(t *testing.T) {
 	}))
 	defer ts2.Close()
 
-	cfg1 := config.Upstream{Name: "cfg1", URL: "http://127.0.0.1:19996", APIKey: "k1", Model: "m1", Timeout: 50 * time.Millisecond}
-	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Model: "m2", Timeout: 5 * time.Second}
+	cfg1 := config.Upstream{Name: "cfg1", URL: "http://127.0.0.1:19996", APIKey: "k1", Models: []string{"m1"}, Timeout: 50 * time.Millisecond}
+	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
 	rec := &usageFakeRecorder{}
 	h := &Handler{
@@ -230,7 +230,7 @@ func TestHandler_Failover_CountsOnce(t *testing.T) {
 	if rec.u.Input != 42 || rec.u.Output != 7 {
 		t.Fatalf("unexpected usage: %+v", rec.u)
 	}
-	// 故障转移后 model 应为上游真实模型名（cfg2.Model="m2"），而非 model_map 的 key（"m"）
+	// 故障转移后 model 应为上游真实模型名（cfg2.Models[0]="m2"），而非 model_map 的 key（"m"）
 	if rec.model != "m2" {
 		t.Fatalf("expected model recorded as upstream real model 'm2', got %q", rec.model)
 	}
@@ -249,7 +249,7 @@ func TestHandler_ErrorResponsePassthrough_NoCount(t *testing.T) {
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
-		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Model: "m", Timeout: 5 * time.Second}}},
+		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          logging.NewNopLogger(),
 		tracker:      rec,
@@ -293,7 +293,7 @@ upstreams:
   - name: cfg1
     url: %s
     apikey: k
-    model: real
+    models: [real]
     timeout: 5s
 projects:
   - name: p1
@@ -344,7 +344,7 @@ func TestHandler_MissingModelField_400(t *testing.T) {
 		map[string]string{"sk-cs-key1": "p1"},
 		map[string]map[string][]string{"p1": {"m": {"cfg1"}}},
 		map[string]config.Upstream{
-			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Model: "real-m", Timeout: 0},
+			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 		},
 	)
 
@@ -378,11 +378,11 @@ func TestBreaker_BackoffSkipsUpstream(t *testing.T) {
 	defer ts1.Close()
 
 	cfg1 := config.Upstream{
-		Name: "cfg1", URL: ts1.URL, APIKey: "k1", Model: "m1",
+		Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"},
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 	cfg2 := config.Upstream{
-		Name: "cfg2", URL: ts2.URL, APIKey: "k2", Model: "m2",
+		Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"},
 		Timeout: 5 * time.Second,
 	}
 
@@ -439,7 +439,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 	breaker := circuitbreaker.NewBreaker()
 
 	cfg503 := config.Upstream{
-		Name: "cfg1", URL: ts503.URL, APIKey: "k1", Model: "m1",
+		Name: "cfg1", URL: ts503.URL, APIKey: "k1", Models: []string{"m1"},
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 
@@ -467,7 +467,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 	// 第三次请求：cfg1 在退避期内，但单 upstream 触发兜底强制探测
 	// 换回正常的 upstream（返回 200）验证强制探测能成功
 	cfg200 := config.Upstream{
-		Name: "cfg1", URL: ts200.URL, APIKey: "k1", Model: "m1",
+		Name: "cfg1", URL: ts200.URL, APIKey: "k1", Models: []string{"m1"},
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 	h := &Handler{
@@ -498,7 +498,7 @@ func TestBreaker_NoBackoffUpstream_NotAffected(t *testing.T) {
 	defer ts.Close()
 
 	cfg1 := config.Upstream{
-		Name: "cfg1", URL: ts.URL, APIKey: "k1", Model: "m1",
+		Name: "cfg1", URL: ts.URL, APIKey: "k1", Models: []string{"m1"},
 		Timeout: 5 * time.Second, // 无 RetryBackoff
 	}
 
@@ -540,11 +540,11 @@ func TestBreaker_4xxNotCounted(t *testing.T) {
 	defer ts1.Close()
 
 	cfg1 := config.Upstream{
-		Name: "cfg1", URL: ts1.URL, APIKey: "k1", Model: "m1",
+		Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"},
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 	cfg2 := config.Upstream{
-		Name: "cfg2", URL: ts2.URL, APIKey: "k2", Model: "m2",
+		Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"},
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 
@@ -581,7 +581,7 @@ func TestBreaker_4xxNotCounted(t *testing.T) {
 	defer ts200.Close()
 
 	cfg1OK := config.Upstream{
-		Name: "cfg1", URL: ts200.URL, APIKey: "k1", Model: "m1",
+		Name: "cfg1", URL: ts200.URL, APIKey: "k1", Models: []string{"m1"},
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 	h.lookup = &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1OK, "cfg2": cfg2}}
@@ -615,7 +615,7 @@ func TestHandler_Forwarded_NoDuplicateProjectField(t *testing.T) {
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
-		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Model: "m", Timeout: 5 * time.Second}}},
+		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
 		usageEnabled: false,
@@ -663,7 +663,7 @@ func TestHandler_Forwarded_LogsTokenFields(t *testing.T) {
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
-		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Model: "m", Timeout: 5 * time.Second}}},
+		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
 		tracker:      rec,
@@ -707,7 +707,7 @@ func TestHandler_UsageDisabled_LogsTokensWithoutPersisting(t *testing.T) {
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
-		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Model: "m", Timeout: 5 * time.Second}}},
+		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
 		tracker:      rec,
@@ -747,7 +747,7 @@ func TestHandler_NoUsage_LogsUnknownToken(t *testing.T) {
 	h := &Handler{
 		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1"}}}),
-		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Model: "m", Timeout: 5 * time.Second}}},
+		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
 		log:          captureLogger(&buf),
 		tracker:      rec,
@@ -793,7 +793,7 @@ func TestHandler_DirectAccess_ForwardsToUpstream(t *testing.T) {
 	defer ts.Close()
 
 	upstreams := map[string]config.Upstream{
-		"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "upstream-key", Model: "real-m", Timeout: 5 * time.Second},
+		"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "upstream-key", Models: []string{"real-m"}, Timeout: 5 * time.Second},
 	}
 	routes := map[string]project.ProjectRoute{
 		"p1": {AllowDirect: true, ModelMap: map[string][]string{"aliasA": {"cfg1"}}},
@@ -825,7 +825,7 @@ func TestHandler_DirectAccess_ForwardsToUpstream(t *testing.T) {
 
 func TestHandler_DirectAccess_Disabled_Returns404(t *testing.T) {
 	upstreams := map[string]config.Upstream{
-		"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Model: "real-m", Timeout: 0},
+		"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
 	}
 	routes := map[string]project.ProjectRoute{
 		"p1": {AllowDirect: false, ModelMap: map[string][]string{"aliasA": {"cfg1"}}},

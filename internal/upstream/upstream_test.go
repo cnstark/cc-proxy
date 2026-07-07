@@ -23,7 +23,7 @@ func TestClient_Forward(t *testing.T) {
 		Name:    "test",
 		URL:     ts.URL,
 		APIKey:  "sk-test",
-		Model:   "real-model",
+		Models: []string{"real-model"},
 		Timeout: 5 * time.Second,
 	}
 
