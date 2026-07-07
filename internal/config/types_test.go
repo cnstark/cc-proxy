@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -642,5 +643,79 @@ func TestValidate_AllowDirectAccess_TrueIsValid(t *testing.T) {
 	}
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("expected valid config with allow_direct_access=true, got: %v", err)
+	}
+}
+
+func TestValidate_UpstreamNameContainsSlash(t *testing.T) {
+	cfg := Config{
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Upstreams: []Upstream{{Name: "cfg/1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected error for upstream name containing /")
+	}
+}
+
+func TestValidate_ModelsEmpty(t *testing.T) {
+	cfg := Config{
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: nil, Timeout: 60 * time.Second}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected error for empty models")
+	}
+}
+
+func TestValidate_ModelsDuplicate(t *testing.T) {
+	cfg := Config{
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1", "m1"}, Timeout: 60 * time.Second}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected error for duplicate models")
+	}
+}
+
+func TestValidate_ModelMapBadFormat(t *testing.T) {
+	cfg := Config{
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"alias": {"cfg1"}}}},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected error for model_map bad format (missing /)")
+	}
+}
+
+func TestValidate_ModelMapModelNotServed(t *testing.T) {
+	cfg := Config{
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
+		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"alias": {"cfg1/nonexistent"}}}},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected error for model_map referencing model not served by upstream")
+	}
+}
+
+func TestNewSnapshot_ModelUpstreamsIndex(t *testing.T) {
+	cfg := Config{
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Upstreams: []Upstream{
+			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1", "m2"}, Timeout: 60 * time.Second},
+			{Name: "cfg2", URL: "https://b.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 30 * time.Second},
+		},
+		Projects: []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
+	}
+	snap := NewSnapshot(cfg)
+	expected := map[string][]string{
+		"m1": {"cfg1"},
+		"m2": {"cfg1", "cfg2"},
+	}
+	if !reflect.DeepEqual(snap.ModelUpstreams, expected) {
+		t.Fatalf("ModelUpstreams mismatch.\n  got:  %v\n  want: %v", snap.ModelUpstreams, expected)
 	}
 }

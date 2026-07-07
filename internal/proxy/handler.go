@@ -253,10 +253,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var startedErr *ResponseStartedError
-			if !errors.As(fwdErr, &startedErr) {
-				if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {
-					h.log.InfoContext(r.Context(), msg)
-				}
+			if errors.As(fwdErr, &startedErr) {
+				h.log.InfoContext(r.Context(), "upstream failed after response started, aborting failover",
+					"upstream", target.Upstream,
+					"error", startedErr.Err.Error(),
+				)
+				return
+			}
+			if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {
+				h.log.InfoContext(r.Context(), msg)
 			}
 		}
 	}
