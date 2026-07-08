@@ -366,6 +366,68 @@ projects:
 	}
 }
 
+func TestWatcher_ValidateFailedKeepsOld(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := tmpDir + "/config.yaml"
+
+	validYAML := `
+server:
+  listen: 127.0.0.1:8787
+  private_keys:
+    sk-cs-key1: project1
+upstreams:
+  - name: cfg1
+    url: https://a.com
+    apikey: k1
+    models: [m1]
+    timeout: 60s
+projects:
+  - name: project1
+    log_level: off
+    model_map:
+      modelA: [cfg1/m1]
+`
+	os.WriteFile(path, []byte(validYAML), 0600)
+
+	w := NewWatcher(path, 50*time.Millisecond, logging.NewStdErrLogger(slog.LevelWarn))
+	defer w.Stop()
+	_, err := w.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 写一个 YAML 格式正确但校验失败的配置（models 为空）
+	invalidButParsed := `
+server:
+  listen: 127.0.0.1:8787
+  private_keys:
+    sk-cs-key1: project1
+upstreams:
+  - name: cfg1
+    url: https://a.com
+    apikey: k1
+    models: []
+    timeout: 60s
+projects:
+  - name: project1
+    log_level: off
+    model_map:
+      modelA: [cfg1/m1]
+`
+	time.Sleep(100 * time.Millisecond)
+	os.WriteFile(path, []byte(invalidButParsed), 0600)
+	time.Sleep(300 * time.Millisecond)
+
+	snap, err := w.Current()
+	if err != nil {
+		t.Fatal("expected old config retained on validate failure")
+	}
+	// 旧配置里 cfg1 有 models: [m1]；若误用了新配置，models 会是空 → Models[0] 越界 panic
+	if snap.Upstreams["cfg1"].Models[0] != "m1" {
+		t.Fatalf("expected old config preserved after validate-failed reload, got models=%v", snap.Upstreams["cfg1"].Models)
+	}
+}
+
 func TestWatcher_GetSnapshot(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := tmpDir + "/config.yaml"

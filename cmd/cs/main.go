@@ -119,7 +119,7 @@ func main() {
 				return nil
 			}
 			for _, u := range cfg.Upstreams {
-				fmt.Printf("%-10s  %-40s  %-20s  %s\n", u.Name, u.URL, strings.Join(u.Models, ", "), u.Timeout)
+				fmt.Printf("%-10s  %-40s  %s  %s\n", u.Name, u.URL, strings.Join(u.Models, ", "), u.Timeout)
 			}
 			return nil
 		},
@@ -412,7 +412,7 @@ func main() {
 						return nil
 					}
 					for reqModel, cfgs := range p.ModelMap {
-						fmt.Printf("%-15s  →  %s\n", reqModel, cfgs)
+						fmt.Printf("%-15s  →  %s\n", reqModel, strings.Join(cfgs, ", "))
 					}
 					return nil
 				}

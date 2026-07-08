@@ -859,3 +859,134 @@ func TestHandler_DirectAccess_Disabled_Returns404(t *testing.T) {
 		t.Fatalf("expected 404 when direct access disabled, got %d", rec.Code)
 	}
 }
+
+// ── ResponseStartedError 不变量测试 ──
+
+// startedErrForwarder 写入部分响应后返回 ResponseStartedError，模拟流式响应中途失败。
+type startedErrForwarder struct {
+	written []byte
+}
+
+func (f *startedErrForwarder) Forward(cfg config.Upstream, body []byte, headers http.Header, w http.ResponseWriter, c *usage.Collector, log *slog.Logger) error {
+	w.WriteHeader(200)
+	w.Write(f.written)
+	return &ResponseStartedError{Err: fmt.Errorf("simulated mid-stream write failure")}
+}
+
+// recordingForwarder 记录是否被调用。
+type recordingForwarder struct {
+	hit    *bool
+	status int
+	body   []byte
+}
+
+func (f *recordingForwarder) Forward(cfg config.Upstream, body []byte, headers http.Header, w http.ResponseWriter, c *usage.Collector, log *slog.Logger) error {
+	*f.hit = true
+	w.WriteHeader(f.status)
+	w.Write(f.body)
+	return nil
+}
+
+// dispatchForwarder 按 upstream 名分派到不同的 Forwarder。
+type dispatchForwarder struct {
+	byUpstream map[string]Forwarder
+}
+
+func (d *dispatchForwarder) Forward(cfg config.Upstream, body []byte, headers http.Header, w http.ResponseWriter, c *usage.Collector, log *slog.Logger) error {
+	if f, ok := d.byUpstream[cfg.Name]; ok {
+		return f.Forward(cfg, body, headers, w, c, log)
+	}
+	return fmt.Errorf("no fake forwarder for upstream %q", cfg.Name)
+}
+
+// TestForcedProbe_ResponseStarted_No502 验证 forced-probe 兜底分支遵守流已开始不变量：
+// 当 probe 的 Forward 在响应已开始后失败（ResponseStartedError），handler 不得写 502
+// （否则会将错误 JSON 拼接到已开始的流上），也不应落入最终的 writeError。直接 return。
+func TestForcedProbe_ResponseStarted_No502(t *testing.T) {
+	fwd := &startedErrForwarder{written: []byte("data: partial")}
+
+	cfg1 := config.Upstream{
+		Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k1", Models: []string{"m1"},
+		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
+	}
+	breaker := circuitbreaker.NewBreaker()
+
+	// 先制造两次失败让 cfg1 进入退避
+	hSetup := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
+		forwarder: NewStreamingForwarder(),
+		log:       logging.NewNopLogger(),
+		breaker:   breaker,
+	}
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+		req.Header.Set("x-api-key", "sk-cs-key1")
+		rec := httptest.NewRecorder()
+		hSetup.ServeHTTP(rec, req)
+		if rec.Code != 502 {
+			t.Fatalf("setup req %d: expected 502, got %d", i+1, rec.Code)
+		}
+	}
+
+	// 现在 cfg1 在退避期。用 fake forwarder 发 forced-probe，返回 ResponseStartedError
+	h := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
+		forwarder: fwd,
+		log:       logging.NewNopLogger(),
+		breaker:   breaker,
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cs-key1")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == 502 {
+		t.Fatalf("forced-probe must not write 502 after ResponseStartedError; got 502, body=%q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "data: partial") {
+		t.Fatalf("expected the partial streamed response to be preserved, got body=%q", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "upstream_error") || strings.Contains(rec.Body.String(), "所有上游均不可用") {
+		t.Fatalf("forced-probe spliced a 502 error body onto the started stream: %q", rec.Body.String())
+	}
+}
+
+// TestHandler_MainLoop_ResponseStartedError_NoFailover 验证主循环在 ResponseStartedError 时不转移、不写 502。
+func TestHandler_MainLoop_ResponseStartedError_NoFailover(t *testing.T) {
+	cfg1 := config.Upstream{Name: "cfg1", URL: "http://example.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}
+	cfg2 := config.Upstream{Name: "cfg2", URL: "http://example.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
+
+	probeHit := false
+	fwdCfg2 := &recordingForwarder{hit: &probeHit, status: 200, body: []byte(`{"ok":true}`)}
+
+	h := &Handler{
+		auth:     auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		resolver: newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
+		lookup:   &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
+		forwarder: &dispatchForwarder{
+			byUpstream: map[string]Forwarder{
+				"cfg1": &startedErrForwarder{written: []byte("data: partial")},
+				"cfg2": fwdCfg2,
+			},
+		},
+		log: logging.NewNopLogger(),
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cs-key1")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if probeHit {
+		t.Fatalf("main loop must NOT failover after ResponseStartedError, but cfg2 was probed")
+	}
+	if rec.Code == 502 {
+		t.Fatalf("main loop must not write 502 after ResponseStartedError; body=%q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "data: partial") {
+		t.Fatalf("expected partial response preserved, got %q", rec.Body.String())
+	}
+}
