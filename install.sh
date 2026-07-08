@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="cnstark/claude-switch"
-BIN_DIR="${HOME}/.claude_switch/bin"
-ENV_FILE="${HOME}/.claude_switch/env.sh"
+REPO="cnstark/cc-proxy"
+BIN_DIR="${HOME}/.cc_proxy/bin"
+ENV_FILE="${HOME}/.cc_proxy/env.sh"
 
 # --- Detect OS/Arch ---
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
         -d|--dir) BIN_DIR="$2"; shift 2 ;;
         -h|--help)
             echo "Usage: curl -fsSL <url> | bash [-d <install-dir>]"
-            echo "Default install dir: ~/.claude_switch/bin"
+            echo "Default install dir: ~/.cc_proxy/bin"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -52,7 +52,7 @@ fi
 echo "==> Latest version: ${VERSION}"
 
 # --- Download ---
-PKG_BASE="claude-switch_${VERSION}_${OS}_${ARCH}"
+PKG_BASE="cc-proxy_${VERSION}_${OS}_${ARCH}"
 PKG_FILE="${PKG_BASE}.${FORMAT}"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PKG_FILE}"
 
@@ -68,27 +68,27 @@ mkdir -p "${BIN_DIR}"
 
 if [ "$FORMAT" = "tar.gz" ]; then
     tar xzf "${TMP_DIR}/${PKG_FILE}" -C "${TMP_DIR}"
-    cp "${TMP_DIR}/${PKG_BASE}/cs" "${BIN_DIR}/"
-    cp "${TMP_DIR}/${PKG_BASE}/cs-proxy" "${BIN_DIR}/"
+    cp "${TMP_DIR}/${PKG_BASE}/ccp" "${BIN_DIR}/"
+    cp "${TMP_DIR}/${PKG_BASE}/ccp-proxy" "${BIN_DIR}/"
 else
     unzip -q "${TMP_DIR}/${PKG_FILE}" -d "${TMP_DIR}"
-    cp "${TMP_DIR}/${PKG_BASE}/cs.exe" "${BIN_DIR}/"
-    cp "${TMP_DIR}/${PKG_BASE}/cs-proxy.exe" "${BIN_DIR}/"
+    cp "${TMP_DIR}/${PKG_BASE}/ccp.exe" "${BIN_DIR}/"
+    cp "${TMP_DIR}/${PKG_BASE}/ccp-proxy.exe" "${BIN_DIR}/"
 fi
 
-chmod +x "${BIN_DIR}/cs" "${BIN_DIR}/cs-proxy" 2>/dev/null || true
+chmod +x "${BIN_DIR}/ccp" "${BIN_DIR}/ccp-proxy" 2>/dev/null || true
 
 # --- Generate env.sh ---
 cat > "${ENV_FILE}" << 'ENVEOF'
-# claude-switch environment - source this file to add binaries to PATH
-export PATH="HOME_PLACEHOLDER/.claude_switch/bin:$PATH"
+# cc-proxy environment - source this file to add binaries to PATH
+export PATH="HOME_PLACEHOLDER/.cc_proxy/bin:$PATH"
 ENVEOF
 # Replace placeholder with actual HOME value
 sed -i "s|HOME_PLACEHOLDER|${HOME}|g" "${ENV_FILE}"
 
 # --- Verify ---
-if "${BIN_DIR}/cs" version >/dev/null 2>&1; then
-    INSTALLED_VER=$("${BIN_DIR}/cs" version | awk '{print $NF}')
+if "${BIN_DIR}/ccp" version >/dev/null 2>&1; then
+    INSTALLED_VER=$("${BIN_DIR}/ccp" version | awk '{print $NF}')
     echo ""
     echo "✅ Installation successful! Version: ${INSTALLED_VER}"
 else
@@ -105,4 +105,4 @@ echo "  echo 'source ${ENV_FILE}' >> ~/.bashrc   # bash users"
 echo "  echo 'source ${ENV_FILE}' >> ~/.zshrc    # zsh users"
 echo ""
 echo "Quick start:"
-echo "  cs help"
+echo "  ccp help"

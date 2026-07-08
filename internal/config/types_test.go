@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cnstark/claude-switch/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/logging"
 )
 
 func intPtr(v int) *int { return &v }
@@ -19,7 +19,7 @@ func TestValidate_Success(t *testing.T) {
 			LogLevel:   LogInfo,
 			LogMaxDays: intPtr(7),
 			PrivateKeys: map[string]string{
-				"sk-cs-key1": "project1",
+				"sk-cp-key1": "project1",
 			},
 		},
 		Upstreams: []Upstream{
@@ -43,7 +43,7 @@ func TestValidate_Success(t *testing.T) {
 
 func TestValidate_DuplicateUpstreamName(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 			{Name: "cfg1", URL: "https://b.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 30 * time.Second},
@@ -60,7 +60,7 @@ func TestValidate_DuplicateUpstreamName(t *testing.T) {
 
 func TestValidate_DanglingUpstreamRef(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
@@ -94,7 +94,7 @@ func TestValidate_PrivateKeyPointsToMissingProject(t *testing.T) {
 	cfg := Config{
 		Server: Server{
 			Listen:      "127.0.0.1:8787",
-			PrivateKeys: map[string]string{"sk-cs-key1": "nonexistent_project"},
+			PrivateKeys: map[string]string{"sk-cp-key1": "nonexistent_project"},
 		},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
@@ -111,7 +111,7 @@ func TestValidate_PrivateKeyPointsToMissingProject(t *testing.T) {
 
 func TestValidate_DuplicateProjectName(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
@@ -128,7 +128,7 @@ func TestValidate_DuplicateProjectName(t *testing.T) {
 
 func TestValidate_DuplicateModelMapKey(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
@@ -144,7 +144,7 @@ func TestValidate_DuplicateModelMapKey(t *testing.T) {
 
 func TestValidate_EmptyUpstreamName(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
 		},
@@ -163,7 +163,7 @@ func TestValidate_DuplicatePrivateKey(t *testing.T) {
 		Server: Server{
 			Listen: "127.0.0.1:8787",
 			// 构造一个实际只含一个 key 的 map（Go 语法不允许 literal 重复 key）
-			PrivateKeys: map[string]string{"sk-cs-key1": "p2"},
+			PrivateKeys: map[string]string{"sk-cp-key1": "p2"},
 		},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second},
@@ -186,7 +186,7 @@ func TestLoad_ValidConfig(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://api.anthropic.com
@@ -260,7 +260,7 @@ func TestWatcher_DetectChange(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -291,7 +291,7 @@ projects:
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -330,7 +330,7 @@ func TestWatcher_InvalidConfigKeepsOld(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -374,7 +374,7 @@ func TestWatcher_ValidateFailedKeepsOld(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -401,7 +401,7 @@ projects:
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -435,7 +435,7 @@ func TestWatcher_GetSnapshot(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -465,7 +465,7 @@ server:
   listen: 127.0.0.1:8787
   usage_stats: true
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://a.com
@@ -489,7 +489,7 @@ projects:
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - {name: cfg1, url: https://a.com, apikey: k1, models: [m1], timeout: 60s}
 projects:
@@ -505,7 +505,7 @@ projects:
 
 func TestValidate_RetryBackoff_Valid(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second,
 				RetryBackoff: []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute}},
@@ -521,7 +521,7 @@ func TestValidate_RetryBackoff_Valid(t *testing.T) {
 
 func TestValidate_RetryBackoff_TooManyTiers(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second,
 				RetryBackoff: []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second, 4 * time.Second, 5 * time.Second}},
@@ -537,7 +537,7 @@ func TestValidate_RetryBackoff_TooManyTiers(t *testing.T) {
 
 func TestValidate_RetryBackoff_NegativeDuration(t *testing.T) {
 	cfg := Config{
-		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second,
 				RetryBackoff: []time.Duration{30 * time.Second, -1 * time.Second}},
@@ -556,7 +556,7 @@ func TestLoad_RetryBackoff_RoundTrip(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://api.anthropic.com
@@ -597,7 +597,7 @@ func TestLoad_RetryBackoff_DefaultEmpty(t *testing.T) {
 server:
   listen: 127.0.0.1:8787
   private_keys:
-    sk-cs-key1: project1
+    sk-cp-key1: project1
 upstreams:
   - name: cfg1
     url: https://api.anthropic.com
@@ -627,8 +627,8 @@ func TestNewSnapshot_ProjectLogLevelDefaults(t *testing.T) {
 		Server: Server{
 			Listen: "127.0.0.1:8787",
 			PrivateKeys: map[string]string{
-				"sk-cs-key1": "p1",
-				"sk-cs-key2": "p2",
+				"sk-cp-key1": "p1",
+				"sk-cp-key2": "p2",
 			},
 		},
 		Upstreams: []Upstream{
@@ -662,7 +662,7 @@ func TestNewSnapshot_ProjectLogLevelDefaults(t *testing.T) {
 
 func TestValidate_ServerLogLevel_Invalid(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: "invalid", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: "invalid", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
@@ -673,7 +673,7 @@ func TestValidate_ServerLogLevel_Invalid(t *testing.T) {
 
 func TestValidate_LogMaxDays_Negative(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: LogInfo, LogMaxDays: intPtr(-1), PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", LogLevel: LogInfo, LogMaxDays: intPtr(-1), PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
@@ -684,7 +684,7 @@ func TestValidate_LogMaxDays_Negative(t *testing.T) {
 
 func TestValidate_ModelMapAliasCanEqualUpstreamName(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects: []Project{
 			{Name: "p1", ModelMap: map[string][]string{"cfg1": {"cfg1/m1"}}},
@@ -697,7 +697,7 @@ func TestValidate_ModelMapAliasCanEqualUpstreamName(t *testing.T) {
 
 func TestValidate_AllowDirectAccess_TrueIsValid(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects: []Project{
 			{Name: "p1", AllowDirectAccess: true, ModelMap: map[string][]string{"aliasA": {"cfg1/m1"}}},
@@ -710,7 +710,7 @@ func TestValidate_AllowDirectAccess_TrueIsValid(t *testing.T) {
 
 func TestValidate_UpstreamNameContainsSlash(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg/1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
@@ -721,7 +721,7 @@ func TestValidate_UpstreamNameContainsSlash(t *testing.T) {
 
 func TestValidate_ModelsEmpty(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: nil, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
@@ -732,7 +732,7 @@ func TestValidate_ModelsEmpty(t *testing.T) {
 
 func TestValidate_ModelsDuplicate(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1", "m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"m": {"cfg1/m1"}}}},
 	}
@@ -743,7 +743,7 @@ func TestValidate_ModelsDuplicate(t *testing.T) {
 
 func TestValidate_ModelMapBadFormat(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"alias": {"cfg1"}}}},
 	}
@@ -754,7 +754,7 @@ func TestValidate_ModelMapBadFormat(t *testing.T) {
 
 func TestValidate_ModelMapModelNotServed(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1"}, Timeout: 60 * time.Second}},
 		Projects:  []Project{{Name: "p1", ModelMap: map[string][]string{"alias": {"cfg1/nonexistent"}}}},
 	}
@@ -765,7 +765,7 @@ func TestValidate_ModelMapModelNotServed(t *testing.T) {
 
 func TestNewSnapshot_ModelUpstreamsIndex(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cs-key1": "p1"}},
+		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1", "m2"}, Timeout: 60 * time.Second},
 			{Name: "cfg2", URL: "https://b.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 30 * time.Second},

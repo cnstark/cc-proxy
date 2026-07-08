@@ -1,15 +1,15 @@
 version: "3.8"
 
 services:
-  cs-proxy:
-    image: ghcr.io/cnstark/claude-switch:latest
-    container_name: cs-proxy
+  ccp-proxy:
+    image: ghcr.io/cnstark/cc-proxy:latest
+    container_name: ccp-proxy
     ports:
       - "127.0.0.1:8787:8787"
     volumes:
-      - ${HOME}/.claude_switch:/root/.claude_switch
+      - ${HOME}/.cc_proxy:/root/.cc_proxy
     restart: unless-stopped
     environment:
-      - CS_CONFIG=/root/.claude_switch/config.yaml
+      - CC_PROXY_CONFIG=/root/.cc_proxy/config.yaml
       # Docker 端口映射通过 veth 网桥连接，容器内必须监听 0.0.0.0
-      - CS_LISTEN=0.0.0.0:8787
+      - CC_PROXY_LISTEN=0.0.0.0:8787

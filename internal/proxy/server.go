@@ -3,7 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"github.com/cnstark/claude-switch/internal/config"
+	"github.com/cnstark/cc-proxy/internal/config"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,7 +28,7 @@ func NewServer(watcher *config.Watcher, handler http.Handler, log *slog.Logger) 
 
 func (s *Server) Start(listenAddr string) error {
 	s.httpServer.Addr = listenAddr
-	s.log.Info("cs-proxy 启动", "listen_addr", listenAddr)
+	s.log.Info("ccp-proxy 启动", "listen_addr", listenAddr)
 
 	snap, err := s.watcher.Current()
 	if err == nil {
@@ -62,6 +62,6 @@ func (s *Server) Start(listenAddr string) error {
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		return fmt.Errorf("关闭服务器失败: %w", err)
 	}
-	s.log.Info("cs-proxy 已退出")
+	s.log.Info("ccp-proxy 已退出")
 	return nil
 }

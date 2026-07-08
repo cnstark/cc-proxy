@@ -4,11 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/cnstark/claude-switch/internal/auth"
-	"github.com/cnstark/claude-switch/internal/circuitbreaker"
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/project"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/auth"
+	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/project"
+	"github.com/cnstark/cc-proxy/internal/usage"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -80,7 +80,7 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 生成 request_id：优先透传上游 x-request-id，fallback 自生成
 	requestID := r.Header.Get("x-request-id")
 	if requestID == "" {
-		requestID = "cs-" + generateShortID()
+		requestID = "ccp-" + generateShortID()
 	}
 	reqLogger := h.log.With("request_id", requestID)
 

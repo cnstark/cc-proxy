@@ -79,7 +79,7 @@ func (w *DailyRotateWriter) rotate(today string) error {
 	// 即便重命名失败也会以追加模式重开基础文件，不会丢数据）。
 	if w.file != nil {
 		if err := w.file.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "cs-proxy: 日志轮转关闭旧文件失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "ccp-proxy: 日志轮转关闭旧文件失败: %v\n", err)
 		}
 	}
 
@@ -89,7 +89,7 @@ func (w *DailyRotateWriter) rotate(today string) error {
 	datedPath := filepath.Join(w.dir, datedName)
 	if _, err := os.Stat(curPath); err == nil {
 		if err := os.Rename(curPath, datedPath); err != nil {
-			fmt.Fprintf(os.Stderr, "cs-proxy: 日志轮转重命名失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "ccp-proxy: 日志轮转重命名失败: %v\n", err)
 		}
 	}
 
@@ -109,7 +109,7 @@ func (w *DailyRotateWriter) cleanup() {
 	}
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cs-proxy: 日志清理读取目录失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ccp-proxy: 日志清理读取目录失败: %v\n", err)
 		return
 	}
 	// 日期文件名使用本地日期（curDate = time.Now().Format），故 fileDate 也按本地时区解析，
@@ -132,7 +132,7 @@ func (w *DailyRotateWriter) cleanup() {
 		}
 		if fileDate.Before(cutoff) {
 			if err := os.Remove(filepath.Join(w.dir, name)); err != nil {
-				fmt.Fprintf(os.Stderr, "cs-proxy: 日志清理删除文件失败 %s: %v\n", name, err)
+				fmt.Fprintf(os.Stderr, "ccp-proxy: 日志清理删除文件失败 %s: %v\n", name, err)
 			}
 		}
 	}

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/usage"
 )
 
 // Client 上游 HTTP 客户端

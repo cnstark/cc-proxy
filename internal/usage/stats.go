@@ -97,7 +97,7 @@ func Render(rows []Row) string {
 	return b.String()
 }
 
-// RunStats 供 cs stats 命令调用：加载文件 → 过滤 → 渲染。
+// RunStats 供 ccp stats 命令调用：加载文件 → 过滤 → 渲染。
 // 文件不存在返回空数据提示（不报错）；损坏返回错误。
 func RunStats(path, project, since, model string) (string, error) {
 	sinceDate, err := parseSince(since)

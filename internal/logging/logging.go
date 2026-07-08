@@ -13,11 +13,11 @@ func NewStdErrLogger(level slog.Leveler) *slog.Logger {
 }
 
 // NewLogger 创建双写 logger（文件 JSON + stderr Text）。
-// logFile 为空时使用 DefaultLogDir()/cs-proxy.log。
+// logFile 为空时使用 DefaultLogDir()/ccp-proxy.log。
 // 返回的 io.Closer 用于关闭底层轮转文件，调用方应在退出时 defer Close。
 func NewLogger(level slog.Leveler, logFile string, maxDays int) (*slog.Logger, io.Closer, error) {
 	if logFile == "" {
-		logFile = filepath.Join(DefaultLogDir(), "cs-proxy.log")
+		logFile = filepath.Join(DefaultLogDir(), "ccp-proxy.log")
 	}
 	dir := filepath.Dir(logFile)
 	baseName := filepath.Base(logFile)
@@ -48,13 +48,13 @@ func ParseLevel(s string, defaultLevel slog.Level) slog.Level {
 	}
 }
 
-// DefaultLogDir 返回默认日志目录 ~/.claude_switch/logs/。
+// DefaultLogDir 返回默认日志目录 ~/.cc_proxy/logs/。
 func DefaultLogDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".", "logs")
 	}
-	return filepath.Join(home, ".claude_switch", "logs")
+	return filepath.Join(home, ".cc_proxy", "logs")
 }
 
 // NewNopLogger 创建丢弃所有输出的 logger，用于测试。

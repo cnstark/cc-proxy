@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/cnstark/claude-switch/internal/auth"
-	"github.com/cnstark/claude-switch/internal/circuitbreaker"
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/logging"
-	"github.com/cnstark/claude-switch/internal/proxy"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/auth"
+	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/proxy"
+	"github.com/cnstark/cc-proxy/internal/usage"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -23,18 +23,18 @@ func main() {
 
 	// --version 直接输出版本号并退出
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Println("cs-proxy version", version)
+		fmt.Println("ccp-proxy version", version)
 		os.Exit(0)
 	}
 
-	configPath := os.Getenv("CS_CONFIG")
+	configPath := os.Getenv("CC_PROXY_CONFIG")
 	if configPath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			bootLogger.Error("无法获取用户主目录", "error", err)
 			os.Exit(1)
 		}
-		configPath = filepath.Join(home, ".claude_switch", "config.yaml")
+		configPath = filepath.Join(home, ".cc_proxy", "config.yaml")
 	}
 
 	// 确保配置文件存在，不存在则自动创建默认配置
@@ -56,23 +56,23 @@ func main() {
 	snap, err := watcher.Current()
 	if err != nil {
 		bootLogger.Error("加载配置失败", "error", err)
-		fmt.Fprintln(os.Stderr, "请先使用 cs 命令完善配置：")
-		fmt.Fprintln(os.Stderr, "  1. cs upstream add <name> --url ... --apikey ... --model ...")
-		fmt.Fprintln(os.Stderr, "  2. cs mapping add default <请求模型名> <上游名>")
-		fmt.Fprintln(os.Stderr, "  3. cs proxy restart")
+		fmt.Fprintln(os.Stderr, "请先使用 ccp 命令完善配置：")
+		fmt.Fprintln(os.Stderr, "  1. ccp upstream add <name> --url ... --apikey ... --model ...")
+		fmt.Fprintln(os.Stderr, "  2. ccp mapping add default <请求模型名> <上游名>")
+		fmt.Fprintln(os.Stderr, "  3. ccp proxy restart")
 		os.Exit(1)
 	}
 
-	// CS_LISTEN 环境变量覆盖配置文件中的 listen 地址。
+	// CC_PROXY_LISTEN 环境变量覆盖配置文件中的 listen 地址。
 	// Docker 部署时需要设为 0.0.0.0:8787，因为容器内 127.0.0.1 不接收
 	// docker-proxy 通过 veth 网桥发来的连接。
-	if envListen := os.Getenv("CS_LISTEN"); envListen != "" {
+	if envListen := os.Getenv("CC_PROXY_LISTEN"); envListen != "" {
 		snap.Server.Listen = envListen
 	}
 
 	// 创建请求链路 logger（双写：文件 JSON + stderr Text）
 	// 注意：log_level / log_file / log_max_days 仅在启动时读取，不支持热重载，
-	// 修改后需重启 cs-proxy 生效（与设计文档一致）。
+	// 修改后需重启 ccp-proxy 生效（与设计文档一致）。
 	serverLevel := logging.ParseLevel(string(snap.Server.LogLevel), slog.LevelInfo)
 	logger, closer, err := logging.NewLogger(serverLevel, snap.Server.LogFile, *snap.Server.LogMaxDays)
 	if err != nil {

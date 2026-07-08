@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/logging"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/usage"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,12 +27,12 @@ var version = "dev"
 
 func main() {
 	home, _ := os.UserHomeDir()
-	defaultConfig := home + "/.claude_switch/config.yaml"
+	defaultConfig := home + "/.cc_proxy/config.yaml"
 
 	rootCmd := &cobra.Command{
-		Use:   "cs",
-		Short: "claude-switch 管理工具",
-		Long:  "管理 claude-switch 本地反向代理的配置：upstream、project、model mapping。",
+		Use:   "ccp",
+		Short: "cc-proxy 管理工具",
+		Long:  "管理 cc-proxy 本地反向代理的配置：upstream、project、model mapping。",
 	}
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", defaultConfig, "配置文件路径")
 
@@ -42,7 +42,7 @@ func main() {
 		Short: "打印版本号",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("cs version", version)
+			fmt.Println("ccp version", version)
 			return nil
 		},
 	})
@@ -51,13 +51,13 @@ func main() {
 	keyCmd := &cobra.Command{Use: "key", Short: "私有 key 管理"}
 	keyGenCmd := &cobra.Command{
 		Use:   "gen",
-		Short: "生成随机私有 key（sk-cs-...）",
+		Short: "生成随机私有 key（sk-cp-...）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b := make([]byte, 32)
 			if _, err := rand.Read(b); err != nil {
 				return fmt.Errorf("生成随机数失败: %w", err)
 			}
-			fmt.Println("sk-cs-" + hex.EncodeToString(b))
+			fmt.Println("sk-cp-" + hex.EncodeToString(b))
 			return nil
 		},
 	}
@@ -246,7 +246,7 @@ func main() {
 			return config.Save(cfg, configPath)
 		},
 	}
-	projectAddCmd.Flags().String("key", "", "私有 key（必填，cs key gen 生成）")
+	projectAddCmd.Flags().String("key", "", "私有 key（必填，ccp key gen 生成）")
 	projectAddCmd.Flags().String("log-level", "off", "日志级别：off, meta, debug")
 	projectAddCmd.MarkFlagRequired("key")
 
@@ -313,7 +313,7 @@ func main() {
 		Short: "开启或关闭项目的 allow_direct_access（用 upstream.name 直接访问）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 2 {
-				return fmt.Errorf("用法: cs project direct-access <name> <on|off>")
+				return fmt.Errorf("用法: ccp project direct-access <name> <on|off>")
 			}
 			name := args[0]
 			var enable bool
@@ -358,7 +358,7 @@ func main() {
 		Short: "添加模型映射",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 3 {
-				return fmt.Errorf("用法: cs mapping add <project> <request-model> <upstream/model> [--backup <upstream/model>]...")
+				return fmt.Errorf("用法: ccp mapping add <project> <request-model> <upstream/model> [--backup <upstream/model>]...")
 			}
 			projName, reqModel, primaryTarget := args[0], args[1], args[2]
 			backups, _ := cmd.Flags().GetStringSlice("backup")
@@ -426,7 +426,7 @@ func main() {
 		Short: "删除模型映射",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 2 {
-				return fmt.Errorf("用法: cs mapping remove <project> <request-model>")
+				return fmt.Errorf("用法: ccp mapping remove <project> <request-model>")
 			}
 			projName, reqModel := args[0], args[1]
 			cfg, err := loadConfig()
@@ -466,13 +466,13 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pidFile := getPIDFilePath()
 			if pid, err := readPID(pidFile); err == nil && processRunning(pid) {
-				return fmt.Errorf("cs-proxy 已在运行 (PID: %d)", pid)
+				return fmt.Errorf("ccp-proxy 已在运行 (PID: %d)", pid)
 			}
 
 			execPath, _ := os.Executable()
-			proxyPath := filepath.Dir(execPath) + "/cs-proxy"
+			proxyPath := filepath.Dir(execPath) + "/ccp-proxy"
 			if _, err := os.Stat(proxyPath); errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("找不到 cs-proxy 二进制: %s（请先 go build ./cmd/cs-proxy）", proxyPath)
+				return fmt.Errorf("找不到 ccp-proxy 二进制: %s（请先 go build ./cmd/ccp-proxy）", proxyPath)
 			}
 
 			logFile := getLogFilePath()
@@ -485,19 +485,19 @@ func main() {
 			procAttr := &os.ProcAttr{
 				Dir:   filepath.Dir(proxyPath),
 				Files: []*os.File{nil, f, f},
-				Env:   append(os.Environ(), "CS_CONFIG="+configPath),
+				Env:   append(os.Environ(), "CC_PROXY_CONFIG="+configPath),
 			}
-			p, err := os.StartProcess(proxyPath, []string{"cs-proxy"}, procAttr)
+			p, err := os.StartProcess(proxyPath, []string{"ccp-proxy"}, procAttr)
 			f.Close()
 			if err != nil {
-				return fmt.Errorf("启动 cs-proxy 失败: %w", err)
+				return fmt.Errorf("启动 ccp-proxy 失败: %w", err)
 			}
 
 			if err := writePID(pidFile, p.Pid); err != nil {
 				return fmt.Errorf("写入 PID 文件失败: %w", err)
 			}
 
-			fmt.Printf("cs-proxy 已启动 (PID: %d)\n", p.Pid)
+			fmt.Printf("ccp-proxy 已启动 (PID: %d)\n", p.Pid)
 			fmt.Printf("日志: %s\n", logFile)
 			return nil
 		},
@@ -510,11 +510,11 @@ func main() {
 			pidFile := getPIDFilePath()
 			pid, err := readPID(pidFile)
 			if err != nil {
-				return fmt.Errorf("cs-proxy 未在运行（找不到 PID 文件）")
+				return fmt.Errorf("ccp-proxy 未在运行（找不到 PID 文件）")
 			}
 			if !processRunning(pid) {
 				os.Remove(pidFile)
-				return fmt.Errorf("cs-proxy (PID: %d) 进程已不存在", pid)
+				return fmt.Errorf("ccp-proxy (PID: %d) 进程已不存在", pid)
 			}
 			proc, err := os.FindProcess(pid)
 			if err != nil {
@@ -523,7 +523,7 @@ func main() {
 			if err := proc.Signal(syscall.SIGTERM); err != nil {
 				return fmt.Errorf("发送 SIGTERM 失败: %w", err)
 			}
-			fmt.Printf("已向 cs-proxy (PID: %d) 发送停止信号\n", pid)
+			fmt.Printf("已向 ccp-proxy (PID: %d) 发送停止信号\n", pid)
 			os.Remove(pidFile)
 			return nil
 		},
@@ -536,15 +536,15 @@ func main() {
 			pidFile := getPIDFilePath()
 			pid, err := readPID(pidFile)
 			if err != nil {
-				fmt.Println("cs-proxy 未运行")
+				fmt.Println("ccp-proxy 未运行")
 				return nil
 			}
 			if !processRunning(pid) {
-				fmt.Println("cs-proxy 未运行（PID 文件过期）")
+				fmt.Println("ccp-proxy 未运行（PID 文件过期）")
 				os.Remove(pidFile)
 				return nil
 			}
-			fmt.Printf("cs-proxy 运行中 (PID: %d) ✓\n", pid)
+			fmt.Printf("ccp-proxy 运行中 (PID: %d) ✓\n", pid)
 			return nil
 		},
 	}
@@ -596,7 +596,7 @@ func main() {
 	statsCmd := &cobra.Command{
 		Use:   "stats [project]",
 		Short: "查看 token 用量统计",
-		Long:  "读取 ~/.claude_switch/usage.json，按 project/model/date 汇总 token 用量（input/output/cache_creation/cache_read）。",
+		Long:  "读取 ~/.cc_proxy/usage.json，按 project/model/date 汇总 token 用量（input/output/cache_creation/cache_read）。",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			project := ""
@@ -637,7 +637,7 @@ func loadConfig() (config.Config, error) {
 			if key != "" {
 				fmt.Fprintf(os.Stderr, "已创建默认配置文件: %s\n", configPath)
 				fmt.Fprintf(os.Stderr, "默认私有 key: %s\n", key)
-				fmt.Fprintf(os.Stderr, "请使用 cs 命令添加上游和映射后，用 cs proxy start 启动代理\n\n")
+				fmt.Fprintf(os.Stderr, "请使用 ccp 命令添加上游和映射后，用 ccp proxy start 启动代理\n\n")
 			}
 			// 重新加载
 			snap, err = config.LoadFile(configPath)
@@ -660,12 +660,12 @@ func loadConfig() (config.Config, error) {
 
 func getPIDFilePath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude_switch", "cs-proxy.pid")
+	return filepath.Join(home, ".cc_proxy", "ccp-proxy.pid")
 }
 
 func getLogFilePath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude_switch", "cs-proxy.log")
+	return filepath.Join(home, ".cc_proxy", "ccp-proxy.log")
 }
 
 func readPID(path string) (int, error) {

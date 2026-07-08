@@ -64,30 +64,30 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o cs${{ matrix.ext }} ./cmd/cs
-          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o cs-proxy${{ matrix.ext }} ./cmd/cs-proxy
+          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o ccp${{ matrix.ext }} ./cmd/ccp
+          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o ccp-proxy${{ matrix.ext }} ./cmd/ccp-proxy
 
       - name: Package (tar.gz)
         if: matrix.format == 'tar.gz'
         run: |
-          PKG="claude-switch_${{ steps.version.outputs.VERSION }}_${{ matrix.os }}_${{ matrix.arch }}"
+          PKG="cc-proxy_${{ steps.version.outputs.VERSION }}_${{ matrix.os }}_${{ matrix.arch }}"
           mkdir -p "$PKG"
-          cp cs cs-proxy LICENSE README.md "$PKG/"
+          cp ccp ccp-proxy LICENSE README.md "$PKG/"
           tar czf "${PKG}.tar.gz" "$PKG"
 
       - name: Package (zip)
         if: matrix.format == 'zip'
         run: |
-          PKG="claude-switch_${{ steps.version.outputs.VERSION }}_${{ matrix.os }}_${{ matrix.arch }}"
+          PKG="cc-proxy_${{ steps.version.outputs.VERSION }}_${{ matrix.os }}_${{ matrix.arch }}"
           mkdir "$PKG"
-          cp cs.exe cs-proxy.exe LICENSE README.md "$PKG/"
+          cp ccp.exe ccp-proxy.exe LICENSE README.md "$PKG/"
           zip -r "${PKG}.zip" "$PKG"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-${{ matrix.arch }}
-          path: claude-switch_*.${{ matrix.format }}
+          path: cc-proxy_*.${{ matrix.format }}
 
   release:
     needs: build
@@ -103,14 +103,14 @@ jobs:
 
       - name: Flatten artifacts
         run: |
-          find artifacts -type f -name 'claude-switch_*' -exec cp {} . \;
+          find artifacts -type f -name 'cc-proxy_*' -exec cp {} . \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            claude-switch_*.tar.gz
-            claude-switch_*.zip
+            cc-proxy_*.tar.gz
+            cc-proxy_*.zip
             install.sh
             install.ps1

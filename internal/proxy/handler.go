@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cnstark/claude-switch/internal/circuitbreaker"
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/logging"
-	"github.com/cnstark/claude-switch/internal/project"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/project"
+	"github.com/cnstark/cc-proxy/internal/usage"
 )
 
 // AuthStore 鉴权接口

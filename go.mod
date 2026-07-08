@@ -1,4 +1,4 @@
-module github.com/cnstark/claude-switch
+module github.com/cnstark/cc-proxy
 
 go 1.26
 

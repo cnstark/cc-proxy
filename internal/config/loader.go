@@ -92,33 +92,33 @@ func EnsureConfig(path string) (string, error) {
 	return privateKey, nil
 }
 
-// genPrivateKey 生成 sk-cs- 前缀的随机私有 key
+// genPrivateKey 生成 sk-cp- 前缀的随机私有 key
 func genPrivateKey() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return "sk-cs-" + hex.EncodeToString(b), nil
+	return "sk-cp-" + hex.EncodeToString(b), nil
 }
 
 // defaultConfigContent 返回带注释的默认配置 YAML 内容
 func defaultConfigContent(privateKey string) string {
-	return fmt.Sprintf(`# Claude Switch 配置文件
-# 使用 "cs" 命令管理配置，或直接编辑此文件后重启 cs-proxy（自动热重载）
+	return fmt.Sprintf(`# cc_proxy 配置文件
+# 使用 "ccp" 命令管理配置，或直接编辑此文件后重启 ccp-proxy（自动热重载）
 #
 # 快速上手：
-#   1. cs upstream add <name> --url ... --apikey ... --model ...   # 添加上游（--model 可多次指定）
-#   2. cs mapping add default <请求模型名> <upstream/model>          # 配置模型路由
-#   3. cs proxy start                                               # 启动代理
+#   1. ccp upstream add <name> --url ... --apikey ... --model ...   # 添加上游（--model 可多次指定）
+#   2. ccp mapping add default <请求模型名> <upstream/model>          # 配置模型路由
+#   3. ccp proxy start                                               # 启动代理
 #
-# 详细文档：https://github.com/cnstark/claude-switch
+# 详细文档：https://github.com/cnstark/cc-proxy
 
 server:
   listen: 127.0.0.1:8787
   log_level: info
-  # log_file: ""            # 自定义日志路径，空=默认 ~/.claude_switch/logs/cs-proxy.log
+  # log_file: ""            # 自定义日志路径，空=默认 ~/.cc_proxy/logs/ccp-proxy.log
   # log_max_days: 7         # 日志保留天数，0=永久保留
-  # 私有 key → 项目名 映射（已自动生成一个 key，也可用 cs key gen 生成新的）
+  # 私有 key → 项目名 映射（已自动生成一个 key，也可用 ccp key gen 生成新的）
   private_keys:
     %s: default
 

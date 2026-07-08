@@ -1,7 +1,7 @@
-# claude_switch
+# cc_proxy
 
-[![Release](https://img.shields.io/github/v/release/cnstark/claude-switch?include_prereleases)](https://github.com/cnstark/claude-switch/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/cnstark/claude-switch)](https://goreportcard.com/report/github.com/cnstark/claude-switch)
+[![Release](https://img.shields.io/github/v/release/cnstark/cc-proxy?include_prereleases)](https://github.com/cnstark/cc-proxy/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cnstark/cc-proxy)](https://goreportcard.com/report/github.com/cnstark/cc-proxy)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 本地反向代理服务器，让 Claude Code 连接 `127.0.0.1:8787` 并按项目粒度路由到不同上游 API。
@@ -10,7 +10,7 @@
 
 ## 目录
 
-- [claude\_switch](#claude_switch)
+- [cc_proxy](#cc_proxy)
   - [目录](#目录)
   - [核心概念](#核心概念)
   - [快速安装](#快速安装)
@@ -56,17 +56,17 @@
 
 ## 核心概念
 
-claude_switch 包含**两类核心对象**：
+cc_proxy 包含**两类核心对象**：
 
 - **上游（upstream）**：全局共享的 API 连接池。每个上游包含 `{name, url, apikey, model, timeout, retry_backoff}`。`model` 是该上游的**真实模型名**——代理转发时会用此值替换请求体中的模型名。
 - **项目（project）**：每个项目含 `{name, log_level, model_map}`。`model_map` 是「Claude Code 请求模型名（别名） → 有序上游列表」的映射。列表顺序即主备故障转移顺序。项目间完全隔离。
 
 ```
-Claude Code                     claude_switch                      上游 API
+Claude Code                     cc_proxy                      上游 API
 ┌──────────┐   127.0.0.1:8787   ┌──────────────┐  真实模型名+真实key  ┌──────────────┐
 │ 请求模型: │ ────────────────→ │ 路由 → 重写  │ ─────────────────→ │ api.anthropic │
 │ opus-4-8  │                   │ 流式透传响应  │ ←───────────────── │ /v1/messages  │
-│ key:sk-cs │ ←──────────────── │              │                    └──────────────┘
+│ key:sk-cp │ ←──────────────── │              │                    └──────────────┘
 └──────────┘                   └──────────────┘
 ```
 
@@ -75,21 +75,21 @@ Claude Code                     claude_switch                      上游 API
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://github.com/cnstark/claude-switch/releases/latest/download/install.sh | bash
-source ~/.claude_switch/env.sh
+curl -fsSL https://github.com/cnstark/cc-proxy/releases/latest/download/install.sh | bash
+source ~/.cc_proxy/env.sh
 ```
 
 ### Windows（PowerShell）
 
 ```powershell
-irm https://github.com/cnstark/claude-switch/releases/latest/download/install.ps1 | iex
-& $env:USERPROFILE\.claude_switch\env.ps1
+irm https://github.com/cnstark/cc-proxy/releases/latest/download/install.ps1 | iex
+& $env:USERPROFILE\.cc_proxy\env.ps1
 ```
 
 ### Docker
 
 ```bash
-wget https://raw.githubusercontent.com/cnstark/claude-switch/master/docker-compose.yml
+wget https://raw.githubusercontent.com/cnstark/cc-proxy/master/docker-compose.yml
 docker-compose up -d
 ```
 
@@ -102,14 +102,14 @@ docker-compose up -d
 ### 1. 生成私有 key
 
 ```bash
-cs key gen
-# → sk-cs-abcd1234...
+ccp key gen
+# → sk-cp-abcd1234...
 ```
 
 ### 2. 添加上游 API
 
 ```bash
-cs upstream add cfg1 \
+ccp upstream add cfg1 \
   --url https://api.anthropic.com \
   --apikey sk-ant-xxx \
   --model claude-opus-4-8
@@ -118,13 +118,13 @@ cs upstream add cfg1 \
 ### 3. 添加项目
 
 ```bash
-cs project add myproject --key sk-cs-abcd1234... --log-level meta
+ccp project add myproject --key sk-cp-abcd1234... --log-level meta
 ```
 
 ### 4. 添加模型映射
 
 ```bash
-cs mapping add myproject claude-opus-4-8 cfg1 --backup cfg2
+ccp mapping add myproject claude-opus-4-8 cfg1 --backup cfg2
 ```
 
 > `--backup` 可重复指定多个备用上游，按顺序故障转移。
@@ -133,10 +133,10 @@ cs mapping add myproject claude-opus-4-8 cfg1 --backup cfg2
 
 ```bash
 # Linux/macOS（后台守护进程）
-cs proxy start
+ccp proxy start
 
 # Windows（前台运行）
-cs-proxy.exe
+ccp-proxy.exe
 ```
 
 ### 6. 配置 Claude Code
@@ -146,7 +146,7 @@ cs-proxy.exe
 ```json
 {
   "apiBaseUrl": "http://127.0.0.1:8787",
-  "apiKey": "sk-cs-abcd1234..."
+  "apiKey": "sk-cp-abcd1234..."
 }
 ```
 
@@ -154,15 +154,15 @@ cs-proxy.exe
 
 ## 配置文件详解
 
-配置文件位于 `~/.claude_switch/config.yaml`（可通过 `CS_CONFIG` 环境变量自定义），完整结构如下：
+配置文件位于 `~/.cc_proxy/config.yaml`（可通过 `CC_PROXY_CONFIG` 环境变量自定义），完整结构如下：
 
 ```yaml
 server:
   listen: 127.0.0.1:8787          # 监听地址（默认值，仅绑定本地）
   usage_stats: false              # 是否启用 token 用量统计（默认关闭）
   private_keys:                   # 私有 key → 项目名 映射
-    sk-cs-abcd1234...: myproject
-    sk-cs-efgh5678...: another-project
+    sk-cp-abcd1234...: myproject
+    sk-cp-efgh5678...: another-project
 
 upstreams:
   - name: cfg1                    # 上游唯一名称
@@ -221,76 +221,76 @@ projects:
 
 ```bash
 # 添加上游
-cs upstream add <name> --url <url> --apikey <key> --model <model> [--timeout 60s]
+ccp upstream add <name> --url <url> --apikey <key> --model <model> [--timeout 60s]
 
 # 列出所有上游
-cs upstream list
+ccp upstream list
 
 # 删除上游
-cs upstream remove <name>
+ccp upstream remove <name>
 
 # 更新上游（只传要改的字段）
-cs upstream update <name> [--url ...] [--apikey ...] [--model ...] [--timeout ...]
+ccp upstream update <name> [--url ...] [--apikey ...] [--model ...] [--timeout ...]
 ```
 
 ### 项目管理
 
 ```bash
 # 添加项目
-cs project add <name> --key <private-key> [--log-level off|meta|debug]
+ccp project add <name> --key <private-key> [--log-level off|meta|debug]
 
 # 列出所有项目
-cs project list
+ccp project list
 
 # 删除项目（同时删除关联的 private key）
-cs project remove <name>
+ccp project remove <name>
 ```
 
 ### 模型映射
 
 ```bash
 # 添加映射（可指定多个备用上游）
-cs mapping add <project> <request-model> <主用cfg> [--backup <备用cfg>]...
+ccp mapping add <project> <request-model> <主用cfg> [--backup <备用cfg>]...
 
 # 查看项目的映射表
-cs mapping list <project>
+ccp mapping list <project>
 
 # 删除映射
-cs mapping remove <project> <request-model>
+ccp mapping remove <project> <request-model>
 ```
 
 ### 密钥管理
 
 ```bash
-# 生成私有 key（前缀 sk-cs-）
-cs key gen
+# 生成私有 key（前缀 sk-cp-）
+ccp key gen
 ```
 
 ### 代理进程管理
 
 ```bash
-cs proxy start       # 后台启动（仅 Linux/macOS）
-cs proxy status      # 查看运行状态
-cs proxy stop        # 停止（仅 Linux/macOS）
-cs proxy logs        # 查看日志
-cs proxy logs --project myproject --level debug   # 按项目和级别过滤
+ccp proxy start       # 后台启动（仅 Linux/macOS）
+ccp proxy status      # 查看运行状态
+ccp proxy stop        # 停止（仅 Linux/macOS）
+ccp proxy logs        # 查看日志
+ccp proxy logs --project myproject --level debug   # 按项目和级别过滤
 ```
 
 ### 用量统计查询
 
 ```bash
 # 全部项目，最近 7 天（默认）
-cs stats
+ccp stats
 
 # 指定项目
-cs stats myproject
+ccp stats myproject
 
 # 自定义时间范围
-cs stats --since 30d
-cs stats --since 2026-06-01
+ccp stats --since 30d
+ccp stats --since 2026-06-01
 
 # 按模型过滤
-cs stats myproject --model claude-opus-4-8
+ccp stats myproject --model claude-opus-4-8
 ```
 
 ---
@@ -328,7 +328,7 @@ projects:
       claude-opus: [anthropic]
 ```
 
-可用 `cs project direct-access <name> <on|off>` 切换。
+可用 `ccp project direct-access <name> <on|off>` 切换。
 
 ### 熔断器
 
@@ -348,13 +348,13 @@ projects:
 ```bash
 # 添加上游时在 config.yaml 中配置 retry_backoff
 # 或通过 update 更新：
-cs upstream update cfg1 --url ... --apikey ... --model ... --timeout ...
+ccp upstream update cfg1 --url ... --apikey ... --model ... --timeout ...
 # retry_backoff 目前需直接在 config.yaml 中编辑
 ```
 
 ### 配置热重载
 
-代理运行时修改 `~/.claude_switch/config.yaml` 后**自动检测并加载**，无需重启：
+代理运行时修改 `~/.cc_proxy/config.yaml` 后**自动检测并加载**，无需重启：
 
 - 每 2 秒轮询文件修改时间（mtime）
 - 变更时重新解析 YAML → 校验 → 原子替换运行时快照
@@ -374,14 +374,14 @@ server:
   listen: 127.0.0.1:8787
   usage_stats: true
   private_keys:
-    sk-cs-abcd1234...: myproject
+    sk-cp-abcd1234...: myproject
 ```
 
 开关支持**热重载**——修改后无需重启即生效。关闭时不再产生新记录，但历史数据保留，可随时重新开启。
 
 #### 数据存储
 
-用量数据持久化到 `~/.claude_switch/usage.json`：
+用量数据持久化到 `~/.cc_proxy/usage.json`：
 
 - 代理启动时加载历史数据，后台每 10 秒刷盘一次，退出时执行最终 flush
 - 原子写入（临时文件 + `rename` 覆盖），刷盘失败保留 dirty 标记下次重试
@@ -397,11 +397,11 @@ server:
 #### 查询
 
 ```bash
-cs stats                    # 全部项目，最近 7 天
-cs stats myproject          # 指定项目
-cs stats --since 30d        # 最近 30 天
-cs stats --since 2026-06-01 # 从指定日期开始
-cs stats myproject --model claude-opus-4-8  # 按模型过滤
+ccp stats                    # 全部项目，最近 7 天
+ccp stats myproject          # 指定项目
+ccp stats --since 30d        # 最近 30 天
+ccp stats --since 2026-06-01 # 从指定日期开始
+ccp stats myproject --model claude-opus-4-8  # 按模型过滤
 ```
 
 输出列：`PROJECT | MODEL | DATE | INPUT | OUTPUT | CACHE_CREATE | CACHE_READ | TOTAL`
@@ -418,7 +418,7 @@ cs stats myproject --model claude-opus-4-8  # 按模型过滤
 | `meta` | 记录请求元信息：鉴权结果、路由决策、上游选择、熔断状态变更、token 用量 |
 | `debug` | 在 meta 基础上记录完整请求体和响应体（⚠️ 含 API key，排查后请及时关闭） |
 
-日志格式为结构化 JSON，输出到代理进程的 stderr（`cs proxy logs` 可查看）。
+日志格式为结构化 JSON，输出到代理进程的 stderr（`ccp proxy logs` 可查看）。
 
 ---
 
@@ -427,15 +427,15 @@ cs stats myproject --model claude-opus-4-8  # 按模型过滤
 ### systemd 自启
 
 ```ini
-# ~/.config/systemd/user/cs-proxy.service
+# ~/.config/systemd/user/ccp-proxy.service
 [Unit]
-Description=claude_switch proxy
+Description=cc_proxy proxy
 After=network.target
 
 [Service]
-ExecStart=%h/bin/cs-proxy
+ExecStart=%h/bin/ccp-proxy
 Restart=on-failure
-Environment=CS_CONFIG=%h/.claude_switch/config.yaml
+Environment=CC_PROXY_CONFIG=%h/.cc_proxy/config.yaml
 
 [Install]
 WantedBy=default.target
@@ -443,14 +443,14 @@ WantedBy=default.target
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now cs-proxy
+systemctl --user enable --now ccp-proxy
 ```
 
 ### Docker 部署
 
 ```bash
 # 下载 compose 文件
-wget https://raw.githubusercontent.com/cnstark/claude-switch/master/docker-compose.yml
+wget https://raw.githubusercontent.com/cnstark/cc-proxy/master/docker-compose.yml
 
 # 启动
 docker-compose up -d
@@ -459,46 +459,46 @@ docker-compose up -d
 docker-compose logs -f
 
 # 在容器内执行 CLI 管理命令
-docker-compose exec cs-proxy cs key gen
-docker-compose exec cs-proxy cs upstream add cfg1 ...
+docker-compose exec ccp-proxy ccp key gen
+docker-compose exec ccp-proxy ccp upstream add cfg1 ...
 
 # 停止
 docker-compose down
 ```
 
-> 容器默认入口为 `cs-proxy`，配置文件通过 volume 挂载到宿主机 `~/.claude_switch`。
-> 也可在宿主机直接用 `cs` 操作共享的 `config.yaml`（推荐，目录已挂载）。
-> 使用 `ghcr.io/cnstark/claude-switch:latest` 镜像，首次启动自动拉取。
+> 容器默认入口为 `ccp-proxy`，配置文件通过 volume 挂载到宿主机 `~/.cc_proxy`。
+> 也可在宿主机直接用 `ccp` 操作共享的 `config.yaml`（推荐，目录已挂载）。
+> 使用 `ghcr.io/cnstark/cc-proxy:latest` 镜像，首次启动自动拉取。
 
 ### Windows 部署
 
-Windows 下 `cs proxy start/stop` 使用 Unix 信号机制，**无法正常工作**。请直接前台运行：
+Windows 下 `ccp proxy start/stop` 使用 Unix 信号机制，**无法正常工作**。请直接前台运行：
 
 ```powershell
 # 前台启动
-cs-proxy.exe
+ccp-proxy.exe
 
 # 或通过环境变量指定配置文件
-$env:CS_CONFIG = "$env:USERPROFILE\.claude_switch\config.yaml"
-cs-proxy.exe
+$env:CC_PROXY_CONFIG = "$env:USERPROFILE\.cc_proxy\config.yaml"
+ccp-proxy.exe
 ```
 
 后台运行方案：
 
 ```powershell
 # 方案 1：nssm 注册为 Windows 服务
-nssm install cs-proxy "%USERPROFILE%\bin\cs-proxy.exe"
-nssm start cs-proxy
+nssm install ccp-proxy "%USERPROFILE%\bin\ccp-proxy.exe"
+nssm start ccp-proxy
 
 # 方案 2：Windows 计划任务
-# 创建触发器为"系统启动时"的基本任务，操作为启动 cs-proxy.exe
+# 创建触发器为"系统启动时"的基本任务，操作为启动 ccp-proxy.exe
 ```
 
 ---
 
 ## 安全
 
-- 配置文件包含上游 API key，**必须** `chmod 600 ~/.claude_switch/config.yaml`
+- 配置文件包含上游 API key，**必须** `chmod 600 ~/.cc_proxy/config.yaml`
 - `debug` 日志级别会落盘凭证，排查后请及时切回 `meta` 或 `off`
 - 代理**仅监听 `127.0.0.1`**，不暴露外网——这是设计约束，请勿修改为 `0.0.0.0`
 - 鉴权使用 `crypto/subtle.ConstantTimeCompare` 恒定时间比较，防止时序攻击
@@ -511,21 +511,21 @@ nssm start cs-proxy
 - **语言**：Go 1.26
 - **依赖**：`github.com/spf13/cobra`（CLI 框架）+ `gopkg.in/yaml.v3`（YAML 解析），其余为标准库
 - **协议**：Anthropic Messages API 兼容上游
-- **架构**：双二进制（`cs` CLI 管理工具 + `cs-proxy` 代理守护进程）
+- **架构**：双二进制（`ccp` CLI 管理工具 + `ccp-proxy` 代理守护进程）
 
 ## 从源码构建
 
 ```bash
-git clone https://github.com/cnstark/claude-switch.git
-cd claude-switch
+git clone https://github.com/cnstark/cc-proxy.git
+cd cc-proxy
 
 # Linux/macOS
-make build          # → bin/cs, bin/cs-proxy
+make build          # → bin/ccp, bin/ccp-proxy
 make build-all      # 全平台交叉编译
 
 # Windows
-go build -o bin/cs.exe ./cmd/cs
-go build -o bin/cs-proxy.exe ./cmd/cs-proxy
+go build -o bin/ccp.exe ./cmd/ccp
+go build -o bin/ccp-proxy.exe ./cmd/ccp-proxy
 
 # 运行测试
 make test           # 或 go test ./...

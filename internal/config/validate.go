@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cnstark/claude-switch/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/logging"
 )
 
 // Validate 校验 Config 的所有规则，返回第一个错误或 nil

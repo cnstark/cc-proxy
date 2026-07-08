@@ -1,4 +1,4 @@
-IMAGE ?= claude-switch:latest
+IMAGE ?= cc-proxy:latest
 PLATFORMS ?= linux/amd64,linux/arm64
 
 VERSION ?= dev
@@ -6,19 +6,19 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: build
 build:
-	go build -ldflags="$(LDFLAGS)" -o bin/cs ./cmd/cs
-	go build -ldflags="$(LDFLAGS)" -o bin/cs-proxy ./cmd/cs-proxy
+	go build -ldflags="$(LDFLAGS)" -o bin/ccp ./cmd/ccp
+	go build -ldflags="$(LDFLAGS)" -o bin/ccp-proxy ./cmd/ccp-proxy
 
 .PHONY: build-all
 build-all:
-	GOOS=linux   GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/cs-linux-amd64   ./cmd/cs
-	GOOS=linux   GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/cs-proxy-linux-amd64 ./cmd/cs-proxy
-	GOOS=linux   GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/cs-linux-arm64   ./cmd/cs
-	GOOS=linux   GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/cs-proxy-linux-arm64 ./cmd/cs-proxy
-	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/cs-windows-amd64.exe   ./cmd/cs
-	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/cs-proxy-windows-amd64.exe ./cmd/cs-proxy
-	GOOS=darwin  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/cs-darwin-arm64  ./cmd/cs
-	GOOS=darwin  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/cs-proxy-darwin-arm64 ./cmd/cs-proxy
+	GOOS=linux   GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-linux-amd64   ./cmd/ccp
+	GOOS=linux   GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-proxy-linux-amd64 ./cmd/ccp-proxy
+	GOOS=linux   GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-linux-arm64   ./cmd/ccp
+	GOOS=linux   GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-proxy-linux-arm64 ./cmd/ccp-proxy
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-windows-amd64.exe   ./cmd/ccp
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-proxy-windows-amd64.exe ./cmd/ccp-proxy
+	GOOS=darwin  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-darwin-arm64  ./cmd/ccp
+	GOOS=darwin  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/ccp-proxy-darwin-arm64 ./cmd/ccp-proxy
 
 .PHONY: test
 test:

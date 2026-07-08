@@ -3,10 +3,10 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/cnstark/claude-switch/internal/auth"
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/logging"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/auth"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/usage"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,7 +90,7 @@ func TestForward_BasicPassthrough(t *testing.T) {
 		Models: []string{"real-model"}, Timeout: 5 * time.Second,
 	}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"aliasModel": {"cfg1/real-model"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg}}
 	fwd := NewStreamingForwarder()
@@ -99,7 +99,7 @@ func TestForward_BasicPassthrough(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"aliasModel","max_tokens":100}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -131,7 +131,7 @@ func TestForward_StreamingSSE(t *testing.T) {
 	defer ts.Close()
 
 	cfg := config.Upstream{Name: "cfg1", URL: ts.URL, APIKey: "sk-upstream", Models: []string{"real-model"}, Timeout: 5 * time.Second}
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real-model"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg}}
 	fwd := NewStreamingForwarder()
@@ -139,7 +139,7 @@ func TestForward_StreamingSSE(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m","stream":true}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -192,7 +192,7 @@ func TestFailover_ResponseBodyStarted_NoFailover(t *testing.T) {
 	cfg1 := config.Upstream{Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 200 * time.Millisecond}
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
@@ -200,7 +200,7 @@ func TestFailover_ResponseBodyStarted_NoFailover(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -228,7 +228,7 @@ func TestFailover_FirstFails_FallbackSucceeds(t *testing.T) {
 	cfg1 := config.Upstream{Name: "cfg1", URL: "http://127.0.0.1:19999", APIKey: "k1", Models: []string{"m1"}, Timeout: 100 * time.Millisecond}
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
@@ -236,7 +236,7 @@ func TestFailover_FirstFails_FallbackSucceeds(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -253,7 +253,7 @@ func TestFailover_AllFail_502(t *testing.T) {
 	cfg1 := config.Upstream{Name: "cfg1", URL: "http://127.0.0.1:19998", APIKey: "k1", Models: []string{"m1"}, Timeout: 50 * time.Millisecond}
 	cfg2 := config.Upstream{Name: "cfg2", URL: "http://127.0.0.1:19999", APIKey: "k2", Models: []string{"m2"}, Timeout: 50 * time.Millisecond}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
@@ -261,7 +261,7 @@ func TestFailover_AllFail_502(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -386,7 +386,7 @@ func TestFailover_FirstReturns5xx_FallbackSucceeds(t *testing.T) {
 	cfg1 := config.Upstream{Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
@@ -394,7 +394,7 @@ func TestFailover_FirstReturns5xx_FallbackSucceeds(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -426,7 +426,7 @@ func TestFailover_FirstReturns429_FallbackSucceeds(t *testing.T) {
 	cfg1 := config.Upstream{Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
@@ -434,7 +434,7 @@ func TestFailover_FirstReturns429_FallbackSucceeds(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -468,7 +468,7 @@ func TestFailover_FirstReturns401_NoFailover(t *testing.T) {
 	cfg1 := config.Upstream{Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}
 	cfg2 := config.Upstream{Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	resolver := newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}})
 	lookup := &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}}
 	fwd := NewStreamingForwarder()
@@ -476,7 +476,7 @@ func TestFailover_FirstReturns401_NoFailover(t *testing.T) {
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

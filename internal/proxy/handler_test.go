@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cnstark/claude-switch/internal/auth"
-	"github.com/cnstark/claude-switch/internal/circuitbreaker"
-	"github.com/cnstark/claude-switch/internal/config"
-	"github.com/cnstark/claude-switch/internal/logging"
-	"github.com/cnstark/claude-switch/internal/project"
-	"github.com/cnstark/claude-switch/internal/upstream"
-	"github.com/cnstark/claude-switch/internal/usage"
+	"github.com/cnstark/cc-proxy/internal/auth"
+	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/project"
+	"github.com/cnstark/cc-proxy/internal/upstream"
+	"github.com/cnstark/cc-proxy/internal/usage"
 	"io"
 	"log/slog"
 	"net/http"
@@ -69,7 +69,7 @@ func captureLogger(buf *bytes.Buffer) *slog.Logger {
 
 func TestHandler_AuthFailure_401(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		nil,
 		nil,
 	)
@@ -93,7 +93,7 @@ func TestHandler_AuthFailure_401(t *testing.T) {
 
 func TestHandler_UnknownModel_404(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		map[string]map[string][]string{
 			"p1": {"knownModel": {"cfg1/real-m"}},
 		},
@@ -103,7 +103,7 @@ func TestHandler_UnknownModel_404(t *testing.T) {
 	)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"unknownModel"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -116,7 +116,7 @@ func TestHandler_UnknownModel_404(t *testing.T) {
 
 func TestHandler_MissingAPIKey_401(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		nil,
 		nil,
 	)
@@ -133,7 +133,7 @@ func TestHandler_MissingAPIKey_401(t *testing.T) {
 
 func TestHandler_BearerTokenAuth_Success(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		map[string]map[string][]string{
 			"p1": {"m": {"cfg1/real-m"}},
 		},
@@ -143,7 +143,7 @@ func TestHandler_BearerTokenAuth_Success(t *testing.T) {
 	)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("Authorization", "Bearer sk-cs-key1")
+	req.Header.Set("Authorization", "Bearer sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -157,7 +157,7 @@ func TestHandler_BearerTokenAuth_Success(t *testing.T) {
 
 func TestHandler_BearerTokenAuth_Failure(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		nil,
 		nil,
 	)
@@ -176,7 +176,7 @@ func TestHandler_BearerTokenAuth_Failure(t *testing.T) {
 
 func TestHandler_XAPIKeyTakesPrecedence(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		map[string]map[string][]string{
 			"p1": {"m": {"cfg1/real-m"}},
 		},
@@ -186,7 +186,7 @@ func TestHandler_XAPIKeyTakesPrecedence(t *testing.T) {
 	)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("Authorization", "Bearer bad-key") // x-api-key 应优先
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
@@ -217,7 +217,7 @@ func TestHandler_Failover_CountsOnce(t *testing.T) {
 
 	rec := &usageFakeRecorder{}
 	h := &Handler{
-		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:         auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder:    NewStreamingForwarder(),
@@ -227,7 +227,7 @@ func TestHandler_Failover_CountsOnce(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -258,7 +258,7 @@ func TestHandler_ErrorResponsePassthrough_NoCount(t *testing.T) {
 
 	rec := &usageFakeRecorder{}
 	h := &Handler{
-		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:         auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
@@ -267,7 +267,7 @@ func TestHandler_ErrorResponsePassthrough_NoCount(t *testing.T) {
 		usageEnabled: true,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != 400 {
@@ -299,7 +299,7 @@ server:
   listen: 127.0.0.1:8787
   usage_stats: true
   private_keys:
-    sk-cs-key1: p1
+    sk-cp-key1: p1
 upstreams:
   - name: cfg1
     url: %s
@@ -328,7 +328,7 @@ projects:
 	handler := NewReloadingHandler(authStore, fwd, watcher, tracker, nil, logging.NewNopLogger())
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -352,7 +352,7 @@ projects:
 
 func TestHandler_MissingModelField_400(t *testing.T) {
 	h := setupTestHandler(
-		map[string]string{"sk-cs-key1": "p1"},
+		map[string]string{"sk-cp-key1": "p1"},
 		map[string]map[string][]string{"p1": {"m": {"cfg1/real-m"}}},
 		map[string]config.Upstream{
 			"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real-m"}, Timeout: 0},
@@ -360,7 +360,7 @@ func TestHandler_MissingModelField_400(t *testing.T) {
 	)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"max_tokens":100}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -400,7 +400,7 @@ func TestBreaker_BackoffSkipsUpstream(t *testing.T) {
 	breaker := circuitbreaker.NewBreaker()
 
 	h := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder: NewStreamingForwarder(),
@@ -411,7 +411,7 @@ func TestBreaker_BackoffSkipsUpstream(t *testing.T) {
 	// 前两次请求：cfg1 返回 503，故障转移到 cfg2 成功；cfg1 累积 2 次失败进入退避
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-		req.Header.Set("x-api-key", "sk-cs-key1")
+		req.Header.Set("x-api-key", "sk-cp-key1")
 		req.Header.Set("content-type", "application/json")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -422,7 +422,7 @@ func TestBreaker_BackoffSkipsUpstream(t *testing.T) {
 
 	// 第三次请求：cfg1 在退避期内，直接被跳过，只用 cfg2
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -455,7 +455,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 	}
 
 	h503 := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg503}},
 		forwarder: NewStreamingForwarder(),
@@ -466,7 +466,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 	// 两次 503 触发退避（每个请求 cfg1 返回可重试错误，最终 502）
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-		req.Header.Set("x-api-key", "sk-cs-key1")
+		req.Header.Set("x-api-key", "sk-cp-key1")
 		req.Header.Set("content-type", "application/json")
 		rec := httptest.NewRecorder()
 		h503.ServeHTTP(rec, req)
@@ -482,7 +482,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
 	}
 	h := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg200}},
 		forwarder: NewStreamingForwarder(),
@@ -490,7 +490,7 @@ func TestBreaker_SingleUpstream_ForcesProbe(t *testing.T) {
 		breaker:   breaker,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -516,7 +516,7 @@ func TestBreaker_NoBackoffUpstream_NotAffected(t *testing.T) {
 	breaker := circuitbreaker.NewBreaker()
 
 	h := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
 		forwarder: NewStreamingForwarder(),
@@ -525,7 +525,7 @@ func TestBreaker_NoBackoffUpstream_NotAffected(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -562,7 +562,7 @@ func TestBreaker_4xxNotCounted(t *testing.T) {
 	breaker := circuitbreaker.NewBreaker()
 
 	h := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder: NewStreamingForwarder(),
@@ -573,7 +573,7 @@ func TestBreaker_4xxNotCounted(t *testing.T) {
 	// 多次 400（不可重试），不应触发 cfg1 的熔断
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-		req.Header.Set("x-api-key", "sk-cs-key1")
+		req.Header.Set("x-api-key", "sk-cp-key1")
 		req.Header.Set("content-type", "application/json")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -598,7 +598,7 @@ func TestBreaker_4xxNotCounted(t *testing.T) {
 	h.lookup = &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1OK, "cfg2": cfg2}}
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -624,7 +624,7 @@ func TestHandler_Forwarded_NoDuplicateProjectField(t *testing.T) {
 
 	var buf bytes.Buffer
 	h := &Handler{
-		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:         auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
@@ -632,7 +632,7 @@ func TestHandler_Forwarded_NoDuplicateProjectField(t *testing.T) {
 		usageEnabled: false,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -672,7 +672,7 @@ func TestHandler_Forwarded_LogsTokenFields(t *testing.T) {
 	rec := &usageFakeRecorder{}
 	var buf bytes.Buffer
 	h := &Handler{
-		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:         auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
@@ -681,7 +681,7 @@ func TestHandler_Forwarded_LogsTokenFields(t *testing.T) {
 		usageEnabled: true,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -716,7 +716,7 @@ func TestHandler_UsageDisabled_LogsTokensWithoutPersisting(t *testing.T) {
 	rec := &usageFakeRecorder{}
 	var buf bytes.Buffer
 	h := &Handler{
-		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:         auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
@@ -725,7 +725,7 @@ func TestHandler_UsageDisabled_LogsTokensWithoutPersisting(t *testing.T) {
 		usageEnabled: false,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -756,7 +756,7 @@ func TestHandler_NoUsage_LogsUnknownToken(t *testing.T) {
 	rec := &usageFakeRecorder{}
 	var buf bytes.Buffer
 	h := &Handler{
-		auth:         auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:         auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:     newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m"}}}),
 		lookup:       &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}}},
 		forwarder:    NewStreamingForwarder(),
@@ -765,7 +765,7 @@ func TestHandler_NoUsage_LogsUnknownToken(t *testing.T) {
 		usageEnabled: true,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -812,14 +812,14 @@ func TestHandler_DirectAccess_ForwardsToUpstream(t *testing.T) {
 	modelUpstreams := map[string][]string{"real-m": {"cfg1"}}
 	resolver := project.NewResolver(routes, modelUpstreams)
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	lookup := &configLookup{upstreams: upstreams}
 	fwd := upstream.NewClient()
 	log := logging.NewNopLogger()
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"real-m","max_tokens":100}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -843,14 +843,14 @@ func TestHandler_DirectAccess_Disabled_Returns404(t *testing.T) {
 	}
 	resolver := project.NewResolver(routes, nil)
 
-	authStore := auth.NewStore(map[string]string{"sk-cs-key1": "p1"})
+	authStore := auth.NewStore(map[string]string{"sk-cp-key1": "p1"})
 	lookup := &configLookup{upstreams: upstreams}
 	fwd := upstream.NewClient()
 	log := logging.NewNopLogger()
 	h := NewHandler(authStore, resolver, lookup, fwd, log)
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"real-m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -913,7 +913,7 @@ func TestForcedProbe_ResponseStarted_No502(t *testing.T) {
 
 	// 先制造两次失败让 cfg1 进入退避
 	hSetup := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
 		forwarder: NewStreamingForwarder(),
@@ -922,7 +922,7 @@ func TestForcedProbe_ResponseStarted_No502(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-		req.Header.Set("x-api-key", "sk-cs-key1")
+		req.Header.Set("x-api-key", "sk-cp-key1")
 		rec := httptest.NewRecorder()
 		hSetup.ServeHTTP(rec, req)
 		if rec.Code != 502 {
@@ -932,7 +932,7 @@ func TestForcedProbe_ResponseStarted_No502(t *testing.T) {
 
 	// 现在 cfg1 在退避期。用 fake forwarder 发 forced-probe，返回 ResponseStartedError
 	h := &Handler{
-		auth:      auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
 		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
 		forwarder: fwd,
@@ -940,7 +940,7 @@ func TestForcedProbe_ResponseStarted_No502(t *testing.T) {
 		breaker:   breaker,
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -964,7 +964,7 @@ func TestHandler_MainLoop_ResponseStartedError_NoFailover(t *testing.T) {
 	fwdCfg2 := &recordingForwarder{hit: &probeHit, status: 200, body: []byte(`{"ok":true}`)}
 
 	h := &Handler{
-		auth:     auth.NewStore(map[string]string{"sk-cs-key1": "p1"}),
+		auth:     auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver: newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
 		lookup:   &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1, "cfg2": cfg2}},
 		forwarder: &dispatchForwarder{
@@ -976,7 +976,7 @@ func TestHandler_MainLoop_ResponseStartedError_NoFailover(t *testing.T) {
 		log: logging.NewNopLogger(),
 	}
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
-	req.Header.Set("x-api-key", "sk-cs-key1")
+	req.Header.Set("x-api-key", "sk-cp-key1")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

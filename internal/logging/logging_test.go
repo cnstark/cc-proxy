@@ -204,7 +204,7 @@ func TestNewLogger_LevelEnforcementAndJSONSink(t *testing.T) {
 }
 
 // TestNewLogger_EmptyLogFileFallback 验证 logFile 为空时回退到默认目录且不报错。
-// 通过 t.Setenv 将用户主目录重定向到临时目录，避免污染真实 ~/.claude_switch/logs。
+// 通过 t.Setenv 将用户主目录重定向到临时目录，避免污染真实 ~/.cc_proxy/logs。
 func TestNewLogger_EmptyLogFileFallback(t *testing.T) {
 	home := t.TempDir()
 	// os.UserHomeDir: Windows 读 USERPROFILE，POSIX 读 HOME，同时设置以兼容双平台
@@ -219,7 +219,7 @@ func TestNewLogger_EmptyLogFileFallback(t *testing.T) {
 
 	logger.Info("default-dir-test")
 
-	wantPath := filepath.Join(home, ".claude_switch", "logs", "cs-proxy.log")
+	wantPath := filepath.Join(home, ".cc_proxy", "logs", "ccp-proxy.log")
 	data, err := os.ReadFile(wantPath)
 	if err != nil {
 		t.Fatalf("expected log at default dir %s, read error: %v", wantPath, err)

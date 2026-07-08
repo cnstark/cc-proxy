@@ -1,7 +1,7 @@
-# claude_switch
+# cc_proxy
 
-[![Release](https://img.shields.io/github/v/release/cnstark/claude-switch?include_prereleases)](https://github.com/cnstark/claude-switch/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/cnstark/claude-switch)](https://goreportcard.com/report/github.com/cnstark/claude-switch)
+[![Release](https://img.shields.io/github/v/release/cnstark/cc-proxy?include_prereleases)](https://github.com/cnstark/cc-proxy/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cnstark/cc-proxy)](https://goreportcard.com/report/github.com/cnstark/cc-proxy)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A local reverse proxy server that lets Claude Code connect to `127.0.0.1:8787` and routes requests to different upstream APIs by project.
@@ -34,17 +34,17 @@ A local reverse proxy server that lets Claude Code connect to `127.0.0.1:8787` a
 
 ## Core Concepts
 
-claude_switch revolves around **two types of configuration objects**:
+cc_proxy revolves around **two types of configuration objects**:
 
 - **Upstream (cfg)**: A globally shared API connection pool entry. Each upstream contains `{name, url, apikey, model, timeout, retry_backoff}`. The `model` field is the upstream's **real model name** — the proxy replaces the request body's model field with this value when forwarding.
 - **Project**: Each project contains `{name, log_level, model_map}`. The `model_map` is a mapping of "Claude Code request model name (alias) → ordered upstream list." The list order determines primary/backup failover sequence. Projects are completely isolated from each other.
 
 ```
-Claude Code                     claude_switch                      Upstream API
+Claude Code                     cc_proxy                      Upstream API
 ┌──────────┐   127.0.0.1:8787   ┌──────────────┐  real model+key   ┌──────────────┐
 │  model:   │ ────────────────→ │ Route→Rewrite │ ────────────────→ │ api.anthropic │
 │ opus-4-8  │                   │ Stream resp.  │ ←──────────────── │ /v1/messages  │
-│ key:sk-cs │ ←──────────────── │               │                   └──────────────┘
+│ key:sk-cp │ ←──────────────── │               │                   └──────────────┘
 └──────────┘                   └──────────────┘
 ```
 
@@ -53,21 +53,21 @@ Claude Code                     claude_switch                      Upstream API
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://github.com/cnstark/claude-switch/releases/latest/download/install.sh | bash
-source ~/.claude_switch/env.sh
+curl -fsSL https://github.com/cnstark/cc-proxy/releases/latest/download/install.sh | bash
+source ~/.cc_proxy/env.sh
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://github.com/cnstark/claude-switch/releases/latest/download/install.ps1 | iex
-& $env:USERPROFILE\.claude_switch\env.ps1
+irm https://github.com/cnstark/cc-proxy/releases/latest/download/install.ps1 | iex
+& $env:USERPROFILE\.cc_proxy\env.ps1
 ```
 
 ### Docker
 
 ```bash
-wget https://raw.githubusercontent.com/cnstark/claude-switch/master/docker-compose.yml
+wget https://raw.githubusercontent.com/cnstark/cc-proxy/master/docker-compose.yml
 docker-compose up -d
 ```
 
@@ -80,14 +80,14 @@ docker-compose up -d
 ### 1. Generate a Private Key
 
 ```bash
-cs key gen
-# → sk-cs-abcd1234...
+ccp key gen
+# → sk-cp-abcd1234...
 ```
 
 ### 2. Add an Upstream
 
 ```bash
-cs upstream add cfg1 \
+ccp upstream add cfg1 \
   --url https://api.anthropic.com \
   --apikey sk-ant-xxx \
   --model claude-opus-4-8
@@ -96,13 +96,13 @@ cs upstream add cfg1 \
 ### 3. Add a Project
 
 ```bash
-cs project add myproject --key sk-cs-abcd1234... --log-level meta
+ccp project add myproject --key sk-cp-abcd1234... --log-level meta
 ```
 
 ### 4. Add Model Mappings
 
 ```bash
-cs mapping add myproject claude-opus-4-8 cfg1 --backup cfg2
+ccp mapping add myproject claude-opus-4-8 cfg1 --backup cfg2
 ```
 
 > `--backup` can be repeated to specify multiple fallback upstreams in failover order.
@@ -111,10 +111,10 @@ cs mapping add myproject claude-opus-4-8 cfg1 --backup cfg2
 
 ```bash
 # Linux/macOS (background daemon)
-cs proxy start
+ccp proxy start
 
 # Windows (foreground)
-cs-proxy.exe
+ccp-proxy.exe
 ```
 
 ### 6. Configure Claude Code
@@ -124,7 +124,7 @@ In `~/.claude.json` or your project's `.claude/settings.json`:
 ```json
 {
   "apiBaseUrl": "http://127.0.0.1:8787",
-  "apiKey": "sk-cs-abcd1234..."
+  "apiKey": "sk-cp-abcd1234..."
 }
 ```
 
@@ -132,15 +132,15 @@ In `~/.claude.json` or your project's `.claude/settings.json`:
 
 ## Configuration Reference
 
-The config file is located at `~/.claude_switch/config.yaml` (customizable via the `CS_CONFIG` environment variable). Full structure:
+The config file is located at `~/.cc_proxy/config.yaml` (customizable via the `CC_PROXY_CONFIG` environment variable). Full structure:
 
 ```yaml
 server:
   listen: 127.0.0.1:8787          # Listen address (default, localhost only)
   usage_stats: false              # Enable token usage tracking (default: false)
   private_keys:                   # Private key → project name mapping
-    sk-cs-abcd1234...: myproject
-    sk-cs-efgh5678...: another-project
+    sk-cp-abcd1234...: myproject
+    sk-cp-efgh5678...: another-project
 
 upstreams:
   - name: cfg1                    # Unique upstream identifier
@@ -199,76 +199,76 @@ projects:
 
 ```bash
 # Add an upstream
-cs upstream add <name> --url <url> --apikey <key> --model <model> [--timeout 60s]
+ccp upstream add <name> --url <url> --apikey <key> --model <model> [--timeout 60s]
 
 # List all upstreams
-cs upstream list
+ccp upstream list
 
 # Remove an upstream
-cs upstream remove <name>
+ccp upstream remove <name>
 
 # Update an upstream (only specify fields to change)
-cs upstream update <name> [--url ...] [--apikey ...] [--model ...] [--timeout ...]
+ccp upstream update <name> [--url ...] [--apikey ...] [--model ...] [--timeout ...]
 ```
 
 ### Project Management
 
 ```bash
 # Add a project
-cs project add <name> --key <private-key> [--log-level off|meta|debug]
+ccp project add <name> --key <private-key> [--log-level off|meta|debug]
 
 # List all projects
-cs project list
+ccp project list
 
 # Remove a project (also removes associated private key)
-cs project remove <name>
+ccp project remove <name>
 ```
 
 ### Model Mapping
 
 ```bash
 # Add a mapping (can specify multiple backup upstreams)
-cs mapping add <project> <request-model> <primary-cfg> [--backup <backup-cfg>]...
+ccp mapping add <project> <request-model> <primary-cfg> [--backup <backup-cfg>]...
 
 # List mappings for a project
-cs mapping list <project>
+ccp mapping list <project>
 
 # Remove a mapping
-cs mapping remove <project> <request-model>
+ccp mapping remove <project> <request-model>
 ```
 
 ### Key Management
 
 ```bash
-# Generate a private key (prefixed sk-cs-)
-cs key gen
+# Generate a private key (prefixed sk-cp-)
+ccp key gen
 ```
 
 ### Proxy Process Management
 
 ```bash
-cs proxy start       # Start in background (Linux/macOS only)
-cs proxy status      # Check running status
-cs proxy stop        # Stop (Linux/macOS only)
-cs proxy logs        # View logs
-cs proxy logs --project myproject --level debug   # Filter by project and level
+ccp proxy start       # Start in background (Linux/macOS only)
+ccp proxy status      # Check running status
+ccp proxy stop        # Stop (Linux/macOS only)
+ccp proxy logs        # View logs
+ccp proxy logs --project myproject --level debug   # Filter by project and level
 ```
 
 ### Usage Statistics Query
 
 ```bash
 # All projects, last 7 days (default)
-cs stats
+ccp stats
 
 # Specific project
-cs stats myproject
+ccp stats myproject
 
 # Custom time range
-cs stats --since 30d
-cs stats --since 2026-06-01
+ccp stats --since 30d
+ccp stats --since 2026-06-01
 
 # Filter by model
-cs stats myproject --model claude-opus-4-8
+ccp stats myproject --model claude-opus-4-8
 ```
 
 ---
@@ -306,7 +306,7 @@ projects:
       claude-opus: [anthropic]
 ```
 
-Toggle via `cs project direct-access <name> <on|off>`.
+Toggle via `ccp project direct-access <name> <on|off>`.
 
 ### Circuit Breaker
 
@@ -335,7 +335,7 @@ upstreams:
 
 ### Hot Reload
 
-The proxy automatically detects changes to `~/.claude_switch/config.yaml` at runtime and reloads without restarting:
+The proxy automatically detects changes to `~/.cc_proxy/config.yaml` at runtime and reloads without restarting:
 
 - Polls file mtime every 2 seconds
 - On change: re-parse YAML → validate → atomically replace runtime snapshot
@@ -355,14 +355,14 @@ server:
   listen: 127.0.0.1:8787
   usage_stats: true
   private_keys:
-    sk-cs-abcd1234...: myproject
+    sk-cp-abcd1234...: myproject
 ```
 
 The switch supports **hot reload** — takes effect immediately without restarting. When turned off, no new records are generated, but historical data is preserved and can be resumed by re-enabling.
 
 #### Data Storage
 
-Usage data is persisted to `~/.claude_switch/usage.json`:
+Usage data is persisted to `~/.cc_proxy/usage.json`:
 
 - Loads historical data on startup, flushes to disk every 10 seconds in background, performs a final flush on exit
 - Atomic writes (temp file + `rename`); dirty markers on flush failure for retry — no data loss
@@ -378,11 +378,11 @@ Usage data is persisted to `~/.claude_switch/usage.json`:
 #### Query
 
 ```bash
-cs stats                    # All projects, last 7 days
-cs stats myproject          # Specific project
-cs stats --since 30d        # Last 30 days
-cs stats --since 2026-06-01 # From a specific date
-cs stats myproject --model claude-opus-4-8  # Filter by model
+ccp stats                    # All projects, last 7 days
+ccp stats myproject          # Specific project
+ccp stats --since 30d        # Last 30 days
+ccp stats --since 2026-06-01 # From a specific date
+ccp stats myproject --model claude-opus-4-8  # Filter by model
 ```
 
 Output columns: `PROJECT | MODEL | DATE | INPUT | OUTPUT | CACHE_CREATE | CACHE_READ | TOTAL`
@@ -399,7 +399,7 @@ Each project can have an independent log level:
 | `meta` | Request metadata: auth results, routing decisions, upstream selection, breaker state changes, token usage |
 | `debug` | Everything in meta plus full request/response bodies (⚠️ contains API keys — switch back after troubleshooting) |
 
-Logs are structured JSON, written to the proxy process's stderr (viewable via `cs proxy logs`).
+Logs are structured JSON, written to the proxy process's stderr (viewable via `ccp proxy logs`).
 
 ---
 
@@ -408,15 +408,15 @@ Logs are structured JSON, written to the proxy process's stderr (viewable via `c
 ### systemd Auto-Start
 
 ```ini
-# ~/.config/systemd/user/cs-proxy.service
+# ~/.config/systemd/user/ccp-proxy.service
 [Unit]
-Description=claude_switch proxy
+Description=cc_proxy proxy
 After=network.target
 
 [Service]
-ExecStart=%h/bin/cs-proxy
+ExecStart=%h/bin/ccp-proxy
 Restart=on-failure
-Environment=CS_CONFIG=%h/.claude_switch/config.yaml
+Environment=CC_PROXY_CONFIG=%h/.cc_proxy/config.yaml
 
 [Install]
 WantedBy=default.target
@@ -424,14 +424,14 @@ WantedBy=default.target
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now cs-proxy
+systemctl --user enable --now ccp-proxy
 ```
 
 ### Docker Deployment
 
 ```bash
 # Download compose file
-wget https://raw.githubusercontent.com/cnstark/claude-switch/master/docker-compose.yml
+wget https://raw.githubusercontent.com/cnstark/cc-proxy/master/docker-compose.yml
 
 # Start
 docker-compose up -d
@@ -440,46 +440,46 @@ docker-compose up -d
 docker-compose logs -f
 
 # Run CLI commands inside the container
-docker-compose exec cs-proxy cs key gen
-docker-compose exec cs-proxy cs upstream add cfg1 ...
+docker-compose exec ccp-proxy ccp key gen
+docker-compose exec ccp-proxy ccp upstream add cfg1 ...
 
 # Stop
 docker-compose down
 ```
 
-> Default entrypoint is `cs-proxy`. Config file is persisted via volume mount to host `~/.claude_switch`.
-> You can also use the host `cs` binary to manage the shared `config.yaml` (recommended, since the directory is mounted).
-> Uses the `ghcr.io/cnstark/claude-switch:latest` image, auto-pulled on first start.
+> Default entrypoint is `ccp-proxy`. Config file is persisted via volume mount to host `~/.cc_proxy`.
+> You can also use the host `ccp` binary to manage the shared `config.yaml` (recommended, since the directory is mounted).
+> Uses the `ghcr.io/cnstark/cc-proxy:latest` image, auto-pulled on first start.
 
 ### Windows Deployment
 
-`cs proxy start/stop` on Windows uses Unix signals and **cannot work properly**. Run in foreground instead:
+`ccp proxy start/stop` on Windows uses Unix signals and **cannot work properly**. Run in foreground instead:
 
 ```powershell
 # Foreground
-cs-proxy.exe
+ccp-proxy.exe
 
 # Or specify config path via environment variable
-$env:CS_CONFIG = "$env:USERPROFILE\.claude_switch\config.yaml"
-cs-proxy.exe
+$env:CC_PROXY_CONFIG = "$env:USERPROFILE\.cc_proxy\config.yaml"
+ccp-proxy.exe
 ```
 
 Background options:
 
 ```powershell
 # Option 1: Register as a Windows service with nssm
-nssm install cs-proxy "%USERPROFILE%\bin\cs-proxy.exe"
-nssm start cs-proxy
+nssm install ccp-proxy "%USERPROFILE%\bin\ccp-proxy.exe"
+nssm start ccp-proxy
 
 # Option 2: Windows Scheduled Task
-# Create a basic task triggered at system startup, action: start cs-proxy.exe
+# Create a basic task triggered at system startup, action: start ccp-proxy.exe
 ```
 
 ---
 
 ## Security
 
-- Config file contains upstream API keys; **must** `chmod 600 ~/.claude_switch/config.yaml`
+- Config file contains upstream API keys; **must** `chmod 600 ~/.cc_proxy/config.yaml`
 - `debug` log level writes credentials to disk; switch back to `meta` or `off` after troubleshooting
 - Proxy **only listens on `127.0.0.1`**, never exposed to external network — this is a design constraint, do not change to `0.0.0.0`
 - Authentication uses `crypto/subtle.ConstantTimeCompare` for timing-safe key comparison
@@ -492,21 +492,21 @@ nssm start cs-proxy
 - **Language**: Go 1.26
 - **Dependencies**: `github.com/spf13/cobra` (CLI framework) + `gopkg.in/yaml.v3` (YAML parsing), standard library for everything else
 - **Protocol**: Anthropic Messages API-compatible upstreams
-- **Architecture**: Dual binary (`cs` CLI management tool + `cs-proxy` proxy daemon)
+- **Architecture**: Dual binary (`ccp` CLI management tool + `ccp-proxy` proxy daemon)
 
 ## Build from Source
 
 ```bash
-git clone https://github.com/cnstark/claude-switch.git
-cd claude-switch
+git clone https://github.com/cnstark/cc-proxy.git
+cd cc-proxy
 
 # Linux/macOS
-make build          # → bin/cs, bin/cs-proxy
+make build          # → bin/ccp, bin/ccp-proxy
 make build-all      # Cross-compile for all platforms
 
 # Windows
-go build -o bin/cs.exe ./cmd/cs
-go build -o bin/cs-proxy.exe ./cmd/cs-proxy
+go build -o bin/ccp.exe ./cmd/ccp
+go build -o bin/ccp-proxy.exe ./cmd/ccp-proxy
 
 # Run tests
 make test           # or go test ./...

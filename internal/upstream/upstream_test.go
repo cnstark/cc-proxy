@@ -1,7 +1,7 @@
 package upstream
 
 import (
-	"github.com/cnstark/claude-switch/internal/config"
+	"github.com/cnstark/cc-proxy/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"

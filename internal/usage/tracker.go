@@ -110,7 +110,7 @@ func (t *Tracker) flushLoop() {
 		select {
 		case <-ticker.C:
 			if err := t.Flush(); err != nil {
-				fmt.Fprintf(os.Stderr, "[cs-proxy] usage 刷盘失败（保留 dirty 重试）: %v\n", err)
+				fmt.Fprintf(os.Stderr, "[ccp-proxy] usage 刷盘失败（保留 dirty 重试）: %v\n", err)
 			}
 		case <-t.stopCh:
 			return
@@ -127,15 +127,15 @@ func (t *Tracker) load() {
 	}
 	var f File
 	if err := json.Unmarshal(data, &f); err != nil {
-		fmt.Fprintf(os.Stderr, "[cs-proxy] usage 文件解析失败（从空开始）: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[ccp-proxy] usage 文件解析失败（从空开始）: %v\n", err)
 		return
 	}
 	if f.Version != fileVersion {
 		backup := t.path + ".bak." + time.Now().Format("20060102-150405")
 		if rerr := os.Rename(t.path, backup); rerr == nil {
-			fmt.Fprintf(os.Stderr, "[cs-proxy] usage 文件版本不兼容（%d），已备份到 %s，从空开始\n", f.Version, backup)
+			fmt.Fprintf(os.Stderr, "[ccp-proxy] usage 文件版本不兼容（%d），已备份到 %s，从空开始\n", f.Version, backup)
 		} else {
-			fmt.Fprintf(os.Stderr, "[cs-proxy] usage 文件版本不兼容（%d），备份失败: %v，从空开始\n", f.Version, rerr)
+			fmt.Fprintf(os.Stderr, "[ccp-proxy] usage 文件版本不兼容（%d），备份失败: %v，从空开始\n", f.Version, rerr)
 		}
 		return
 	}
@@ -229,7 +229,7 @@ func today() string {
 	return time.Now().Format("2006-01-02")
 }
 
-// LoadFile 读取 usage.json（只读，不持锁），供 cs stats 查询。
+// LoadFile 读取 usage.json（只读，不持锁），供 ccp stats 查询。
 func LoadFile(path string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
