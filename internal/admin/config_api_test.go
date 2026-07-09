@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,5 +86,29 @@ func TestConfigPutRejectsInvalid(t *testing.T) {
 	}
 	if snap2.Upstreams["u1"].APIKey != "sk-ant-real-key" {
 		t.Errorf("拒绝的 PUT 不应写盘，原 apikey 应保留，得到 %q", snap2.Upstreams["u1"].APIKey)
+	}
+}
+
+func TestProjectUpdateReturns404ForMissing(t *testing.T) {
+	s := &Server{configPath: writeConfigFile(t), enabled: true}
+	body := strings.NewReader(`{"log_level":"debug"}`)
+	req := httptest.NewRequest("PUT", "/api/projects/nonexistent", body)
+	req.SetPathValue("name", "nonexistent")
+	rr := httptest.NewRecorder()
+	s.handleProjectUpdate(rr, req)
+	if rr.Code != 404 {
+		t.Errorf("期望 404，得到 %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMappingDeleteReturns404ForMissingProject(t *testing.T) {
+	s := &Server{configPath: writeConfigFile(t), enabled: true}
+	req := httptest.NewRequest("DELETE", "/api/projects/nonexistent/mappings/foo", nil)
+	req.SetPathValue("name", "nonexistent")
+	req.SetPathValue("model", "foo")
+	rr := httptest.NewRecorder()
+	s.handleMappingDelete(rr, req)
+	if rr.Code != 404 {
+		t.Errorf("期望 404，得到 %d body=%s", rr.Code, rr.Body.String())
 	}
 }

@@ -121,7 +121,10 @@ func (s *Server) handleUpstreamCreate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 201, map[string]string{"status": "ok"})
 }
 
@@ -157,7 +160,10 @@ func (s *Server) handleUpstreamUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -186,7 +192,10 @@ func (s *Server) handleUpstreamDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -220,7 +229,10 @@ func (s *Server) handleProjectCreate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 201, map[string]string{"status": "ok"})
 }
 
@@ -235,17 +247,26 @@ func (s *Server) handleProjectUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
+	found := false
 	for i, p := range cfg.Projects {
 		if p.Name == name {
 			cfg.Projects[i].LogLevel = config.LogLevel(body.LogLevel)
+			found = true
 			break
 		}
+	}
+	if !found {
+		writeJSON(w, 404, map[string]string{"error": "project 不存在"})
+		return
 	}
 	if err := config.Validate(cfg); err != nil {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -279,7 +300,10 @@ func (s *Server) handleProjectDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -294,17 +318,26 @@ func (s *Server) handleDirectAccess(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
+	found := false
 	for i, p := range cfg.Projects {
 		if p.Name == name {
 			cfg.Projects[i].AllowDirectAccess = body.On
+			found = true
 			break
 		}
+	}
+	if !found {
+		writeJSON(w, 404, map[string]string{"error": "project 不存在"})
+		return
 	}
 	if err := config.Validate(cfg); err != nil {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -320,20 +353,29 @@ func (s *Server) handleMappingCreate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
+	found := false
 	for i, p := range cfg.Projects {
 		if p.Name == name {
 			if cfg.Projects[i].ModelMap == nil {
 				cfg.Projects[i].ModelMap = map[string][]string{}
 			}
 			cfg.Projects[i].ModelMap[body.Model] = body.Targets
+			found = true
 			break
 		}
+	}
+	if !found {
+		writeJSON(w, 404, map[string]string{"error": "project 不存在"})
+		return
 	}
 	if err := config.Validate(cfg); err != nil {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 201, map[string]string{"status": "ok"})
 }
 
@@ -345,17 +387,26 @@ func (s *Server) handleMappingDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
+	found := false
 	for i, p := range cfg.Projects {
 		if p.Name == name {
 			delete(cfg.Projects[i].ModelMap, model)
+			found = true
 			break
 		}
+	}
+	if !found {
+		writeJSON(w, 404, map[string]string{"error": "project 不存在"})
+		return
 	}
 	if err := config.Validate(cfg); err != nil {
 		writeJSON(w, 422, map[string]string{"error": err.Error()})
 		return
 	}
-	config.Save(cfg, s.configPath)
+	if err := config.Save(cfg, s.configPath); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
