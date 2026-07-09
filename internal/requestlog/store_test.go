@@ -127,3 +127,58 @@ func TestStoreDbFilePermissions(t *testing.T) {
 		t.Errorf("期望 0600，得到 %v", info.Mode().Perm())
 	}
 }
+
+func TestSubscribeReceivesNewEntries(t *testing.T) {
+	s := newTestStore(t, 30)
+	ch, cancel := s.Subscribe("p1")
+	defer cancel()
+	s.Record(Entry{Project: "p1", Status: 200})
+	s.Record(Entry{Project: "p2", Status: 200}) // 应被过滤
+	s.Flush()
+	select {
+	case r := <-ch:
+		if r.Project != "p1" {
+			t.Errorf("期望 p1，得到 %q", r.Project)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("未收到订阅推送")
+	}
+	select {
+	case r := <-ch:
+		t.Errorf("不应收到 p2，得到 %+v", r)
+	case <-time.After(100 * time.Millisecond):
+		// 期望：p2 被过滤，无第二条
+	}
+}
+
+func TestSubscribeAllProjects(t *testing.T) {
+	s := newTestStore(t, 30)
+	ch, cancel := s.Subscribe("") // 空=全部
+	defer cancel()
+	s.Record(Entry{Project: "p2", Status: 200})
+	s.Flush()
+	select {
+	case r := <-ch:
+		if r.Project != "p2" {
+			t.Errorf("期望 p2，得到 %q", r.Project)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("空 project 应收到全部")
+	}
+}
+
+func TestMaybeCleanDeletesOldRows(t *testing.T) {
+	s := newTestStore(t, 1) // 保留 1 天
+	_, err := s.db.Exec(`INSERT INTO requests(ts,project) VALUES(?,?)`, time.Now().Add(-48*time.Hour).UnixMilli(), "old")
+	if err != nil {
+		t.Fatalf("插入旧记录失败: %v", err)
+	}
+	s.maybeClean(time.Now())
+	s.Flush()
+	rows := s.Query(QueryParams{Limit: 100})
+	for _, r := range rows {
+		if r.Project == "old" {
+			t.Errorf("旧记录应被清理")
+		}
+	}
+}
