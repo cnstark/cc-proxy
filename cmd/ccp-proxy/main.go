@@ -95,7 +95,7 @@ func main() {
 	fwd := proxy.NewStreamingForwarder()
 	breaker := circuitbreaker.NewBreaker()
 
-	handler := proxy.NewReloadingHandler(authStore, fwd, watcher, tracker, breaker, logger)
+	handler := proxy.NewReloadingHandler(authStore, fwd, watcher, tracker, breaker, nil, logger)
 
 	srv := proxy.NewServer(watcher, handler, logger)
 	if err := srv.Start(snap.Server.Listen); err != nil {
