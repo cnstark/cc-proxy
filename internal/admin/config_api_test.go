@@ -64,6 +64,9 @@ func TestConfigPutPreservesMaskedApikey(t *testing.T) {
 	if snap.Upstreams["u1"].APIKey != "sk-ant-real-key" {
 		t.Errorf("脱敏占位应保留原 apikey，得到 %q", snap.Upstreams["u1"].APIKey)
 	}
+	if snap.Server.PrivateKeys["sk-cp-secret-key"] != "default" {
+		t.Errorf("private key 未还原，得到 %v", snap.Server.PrivateKeys)
+	}
 }
 
 func TestConfigPutRejectsInvalid(t *testing.T) {
@@ -74,5 +77,13 @@ func TestConfigPutRejectsInvalid(t *testing.T) {
 	s.handleConfigPut(rr, httptest.NewRequest("PUT", "/api/config", bytes.NewReader(out)))
 	if rr.Code != 422 {
 		t.Errorf("期望 422，得到 %d", rr.Code)
+	}
+	// 确认原文件未被覆盖
+	snap2, err := config.LoadFile(s.configPath)
+	if err != nil {
+		t.Fatalf("LoadFile after rejected PUT: %v", err)
+	}
+	if snap2.Upstreams["u1"].APIKey != "sk-ant-real-key" {
+		t.Errorf("拒绝的 PUT 不应写盘，原 apikey 应保留，得到 %q", snap2.Upstreams["u1"].APIKey)
 	}
 }
