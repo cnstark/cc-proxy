@@ -8,12 +8,12 @@ const cookieName = "ccp_admin"
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.enabled {
-			http.Error(w, `{"error":"后台未启用，请先 ccp admin set-password"}`, http.StatusForbidden)
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "后台未启用，请先 ccp admin set-password"})
 			return
 		}
 		c, err := r.Cookie(cookieName)
 		if err != nil || !s.sm.Verify(c.Value) {
-			http.Error(w, `{"error":"未登录或会话过期"}`, http.StatusUnauthorized)
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "未登录或会话过期"})
 			return
 		}
 		next.ServeHTTP(w, r)

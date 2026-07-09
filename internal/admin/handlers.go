@@ -31,7 +31,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !s.enabled {
-		http.Error(w, `{"error":"后台未启用"}`, http.StatusForbidden)
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "后台未启用"})
 		return
 	}
 	var body struct {

@@ -55,6 +55,37 @@ func TestRequireAuthRejectsNoCookie(t *testing.T) {
 	}
 }
 
+func TestRequireAuthSetsJSONContentType(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/config", nil)
+	rr := httptest.NewRecorder()
+	s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("不应进入受保护 handler")
+	})).ServeHTTP(rr, req)
+	if rr.Code != 401 {
+		t.Fatalf("期望 401，得到 %d", rr.Code)
+	}
+	ct := rr.Header().Get("content-type")
+	if !strings.Contains(ct, "json") {
+		t.Errorf("期望 application/json Content-Type，得到 %q", ct)
+	}
+}
+
+func TestLoginDisabledSetsJSONContentType(t *testing.T) {
+	s := newTestServer(t)
+	s.enabled = false
+	req := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"password":"x"}`))
+	rr := httptest.NewRecorder()
+	s.handleLogin(rr, req)
+	if rr.Code != 403 {
+		t.Fatalf("期望 403，得到 %d", rr.Code)
+	}
+	ct := rr.Header().Get("content-type")
+	if !strings.Contains(ct, "json") {
+		t.Errorf("期望 application/json Content-Type，得到 %q", ct)
+	}
+}
+
 func TestRequireAuthAcceptsValidCookie(t *testing.T) {
 	s := newTestServer(t)
 	token, _ := s.sm.Issue()
