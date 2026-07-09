@@ -44,6 +44,19 @@ func TestSessionExpires(t *testing.T) {
 	}
 }
 
+func TestVerifyPasswordRejectsMalformedHashWithoutPanic(t *testing.T) {
+	// 非数字参数（如 m=abc）不应 panic，应返回 false。
+	malformed := "$argon2id$v=19$m=abc,t=2,p=4$c2FsdA$aGFzaA"
+	if VerifyPassword("anything", malformed) {
+		t.Errorf("畸形哈希应返回 false")
+	}
+	// 零参数哈希不应 panic，应返回 false。
+	zeroParams := "$argon2id$v=19$m=0,t=0,p=0$c2FsdA$aGFzaA"
+	if VerifyPassword("anything", zeroParams) {
+		t.Errorf("零参数哈希应返回 false")
+	}
+}
+
 func TestSaveLoadAdmin(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "admin.json")
 	ac := AdminConfig{PasswordHash: "$argon2id$x", SessionSecret: "deadbeef", Enabled: true}

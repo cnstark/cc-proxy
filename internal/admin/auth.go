@@ -59,15 +59,27 @@ func decodeArgon2id(encoded string) (argonParams, []byte, []byte, bool) {
 		}
 		switch kvParts[0] {
 		case "m":
-			n, _ := strconv.ParseUint(kvParts[1], 10, 32)
+			n, err := strconv.ParseUint(kvParts[1], 10, 32)
+			if err != nil {
+				return argonParams{}, nil, nil, false
+			}
 			p.memory = uint32(n)
 		case "t":
-			n, _ := strconv.ParseUint(kvParts[1], 10, 32)
+			n, err := strconv.ParseUint(kvParts[1], 10, 32)
+			if err != nil {
+				return argonParams{}, nil, nil, false
+			}
 			p.time = uint32(n)
 		case "p":
-			n, _ := strconv.ParseUint(kvParts[1], 10, 8)
+			n, err := strconv.ParseUint(kvParts[1], 10, 8)
+			if err != nil {
+				return argonParams{}, nil, nil, false
+			}
 			p.threads = uint8(n)
 		}
+	}
+	if p.memory == 0 || p.time == 0 || p.threads == 0 {
+		return argonParams{}, nil, nil, false
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
