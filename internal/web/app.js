@@ -27,6 +27,7 @@ function el(tag, props={}, children=[]) {
 async function render() {
   const hash = location.hash.slice(1) || 'config';
   app.innerHTML = '';
+  if (logES) { logES.close(); logES = null; }
   if (hash === 'login') return renderLogin();
   // HttpOnly cookie is invisible to JS; probe the authed endpoint instead.
   // (api() already redirects to #login on 401, so a failed probe routes there.)
