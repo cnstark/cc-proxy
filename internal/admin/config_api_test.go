@@ -112,3 +112,78 @@ func TestMappingDeleteReturns404ForMissingProject(t *testing.T) {
 		t.Errorf("期望 404，得到 %d body=%s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestConfigGetEmitsSnakeCaseJSONKeys(t *testing.T) {
+	s := &Server{configPath: writeConfigFile(t), enabled: true}
+	req := httptest.NewRequest("GET", "/api/config", nil)
+	rr := httptest.NewRecorder()
+	s.handleConfigGet(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("期望 200，得到 %d", rr.Code)
+	}
+
+	// 解码到 map[string]any（case-SENSITIVE），NOT config.Config（json.Unmarshal 对 struct 大小写不敏感）
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("JSON 解析失败: %v", err)
+	}
+
+	// 顶层键必须是 snake_case
+	if _, ok := body["Upstreams"]; ok {
+		t.Errorf("顶层键不应出现 PascalCase 'Upstreams'，应为 'upstreams'")
+	}
+	if _, ok := body["upstreams"]; !ok {
+		t.Errorf("缺少顶层键 'upstreams'")
+	}
+	if _, ok := body["Projects"]; ok {
+		t.Errorf("顶层键不应出现 PascalCase 'Projects'，应为 'projects'")
+	}
+	if _, ok := body["projects"]; !ok {
+		t.Errorf("缺少顶层键 'projects'")
+	}
+
+	server, ok := body["server"].(map[string]any)
+	if !ok {
+		t.Fatal("缺少 'server' 键或不是 object")
+	}
+	for _, k := range []string{"private_keys", "listen", "admin_listen"} {
+		if _, ok := server[k]; !ok {
+			t.Errorf("server 缺少键 %q", k)
+		}
+	}
+	if _, ok := server["PrivateKeys"]; ok {
+		t.Errorf("server 不应出现 PascalCase 'PrivateKeys'，应为 'private_keys'")
+	}
+
+	upstreams, ok := body["upstreams"].([]any)
+	if !ok || len(upstreams) == 0 {
+		t.Fatal("upstreams 为空或不是 array")
+	}
+	u := upstreams[0].(map[string]any)
+	for _, k := range []string{"name", "url", "apikey", "models", "timeout"} {
+		if _, ok := u[k]; !ok {
+			t.Errorf("upstream 缺少键 %q", k)
+		}
+	}
+	for _, bad := range []string{"Name", "APIKey", "Url"} {
+		if _, ok := u[bad]; ok {
+			t.Errorf("upstream 不应出现 PascalCase %q，应为 snake_case", bad)
+		}
+	}
+
+	projects, ok := body["projects"].([]any)
+	if !ok || len(projects) == 0 {
+		t.Fatal("projects 为空或不是 array")
+	}
+	p := projects[0].(map[string]any)
+	for _, k := range []string{"name", "log_level", "model_map", "allow_direct_access"} {
+		if _, ok := p[k]; !ok {
+			t.Errorf("project 缺少键 %q", k)
+		}
+	}
+	for _, bad := range []string{"LogLevel", "ModelMap", "AllowDirectAccess"} {
+		if _, ok := p[bad]; ok {
+			t.Errorf("project 不应出现 PascalCase %q，应为 snake_case", bad)
+		}
+	}
+}

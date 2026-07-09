@@ -135,7 +135,7 @@ async function saveConfig(cfg) {
   if (ok) { renderConfig(); }
   else alert('保存失败: '+(data.error||''));
 }
-function addUpstream(cfg){ const name=prompt('name'); if(!name)return; const url=prompt('url'); const ak=prompt('apikey'); const ms=prompt('models 逗号分隔').split(','); cfg.upstreams.push({name,url,apikey:ak,models:ms,timeout:'60s'}); saveConfig(cfg); }
+function addUpstream(cfg){ const name=prompt('name'); if(!name)return; const url=prompt('url'); const ak=prompt('apikey'); const ms=prompt('models 逗号分隔').split(','); cfg.upstreams.push({name,url,apikey:ak,models:ms,timeout:60000000000}); saveConfig(cfg); }
 function editUpstream(cfg,u){ const url=prompt('url',u.url); if(url!=null)u.url=url; const ak=prompt('apikey（留空保留）',''); if(ak)u.apikey=ak; saveConfig(cfg); }
 async function delUpstream(cfg,name){ if(!confirm('删除 '+name))return; cfg.upstreams=cfg.upstreams.filter(u=>u.name!==name); saveConfig(cfg); }
 function addProject(cfg){ const name=prompt('name'); if(!name)return; const key=prompt('private key（可先用生成按钮）'); const lvl=prompt('log_level','off'); cfg.projects.push({name,log_level:lvl,model_map:{}}); cfg.server.private_keys[key]=name; pendingRestart=true; render(); saveConfig(cfg); }

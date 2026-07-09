@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,7 +31,9 @@ type Server struct {
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("writeJSON encode failed: %v", err)
+	}
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {

@@ -6,25 +6,25 @@ import "time"
 // LogLevel / LogFile / LogMaxDays / UsageStats 仅在启动时读取，不支持热重载，修改后需重启 ccp-proxy 生效。
 // AdminListen / RequestLogEnabled / RequestLogMaxDays 同样启动时读取（后台端口与请求日志库路径不热重载）。
 type Server struct {
-	Listen              string            `yaml:"listen"`
-	LogLevel            LogLevel          `yaml:"log_level"`              // 守护进程日志级别，默认 info
-	LogFile             string            `yaml:"log_file"`               // 自定义日志文件路径，空=默认路径
-	LogMaxDays          *int              `yaml:"log_max_days"`           // 日志保留天数，nil=默认7，0=永久保留
-	UsageStats          bool              `yaml:"usage_stats"`
-	PrivateKeys         map[string]string `yaml:"private_keys"`            // key → project name
-	AdminListen         string            `yaml:"admin_listen"`           // 后台监听地址，默认 127.0.0.1:8788
-	RequestLogEnabled   *bool             `yaml:"requestlog_enabled"`     // nil/true=开启请求日志
-	RequestLogMaxDays   *int              `yaml:"requestlog_max_days"`    // nil=30，0=永久保留
+	Listen            string            `yaml:"listen" json:"listen"`
+	LogLevel          LogLevel          `yaml:"log_level" json:"log_level"`       // 守护进程日志级别，默认 info
+	LogFile           string            `yaml:"log_file" json:"log_file"`         // 自定义日志文件路径，空=默认路径
+	LogMaxDays        *int              `yaml:"log_max_days" json:"log_max_days"` // 日志保留天数，nil=默认7，0=永久保留
+	UsageStats        bool              `yaml:"usage_stats" json:"usage_stats"`
+	PrivateKeys       map[string]string `yaml:"private_keys" json:"private_keys"`               // key → project name
+	AdminListen       string            `yaml:"admin_listen" json:"admin_listen"`               // 后台监听地址，默认 127.0.0.1:8788
+	RequestLogEnabled *bool             `yaml:"requestlog_enabled" json:"requestlog_enabled"`   // nil/true=开启请求日志
+	RequestLogMaxDays *int              `yaml:"requestlog_max_days" json:"requestlog_max_days"` // nil=30，0=永久保留
 }
 
 // Upstream 上游 API 配置（cfg）
 type Upstream struct {
-	Name         string          `yaml:"name"`
-	URL          string          `yaml:"url"`
-	APIKey       string          `yaml:"apikey"`
-	Models       []string        `yaml:"models"` // 该上游可服务的真实模型名列表（至少一个）
-	Timeout      time.Duration   `yaml:"timeout"`
-	RetryBackoff []time.Duration `yaml:"retry_backoff"` // 可选，最多 4 档退避时间；nil/空 = 关闭断路器
+	Name         string          `yaml:"name" json:"name"`
+	URL          string          `yaml:"url" json:"url"`
+	APIKey       string          `yaml:"apikey" json:"apikey"`
+	Models       []string        `yaml:"models" json:"models"` // 该上游可服务的真实模型名列表（至少一个）
+	Timeout      time.Duration   `yaml:"timeout" json:"timeout"`
+	RetryBackoff []time.Duration `yaml:"retry_backoff" json:"retry_backoff"` // 可选，最多 4 档退避时间；nil/空 = 关闭断路器
 }
 
 // LogLevel 日志级别
@@ -39,17 +39,17 @@ const (
 
 // Project 项目配置
 type Project struct {
-	Name              string              `yaml:"name"`
-	LogLevel          LogLevel            `yaml:"log_level"`
-	ModelMap          map[string][]string `yaml:"model_map"`           // 请求模型名 → 有序 cfg 名列表
-	AllowDirectAccess bool                `yaml:"allow_direct_access"` // 允许用 upstream.name 直接访问（默认 false）
+	Name              string              `yaml:"name" json:"name"`
+	LogLevel          LogLevel            `yaml:"log_level" json:"log_level"`
+	ModelMap          map[string][]string `yaml:"model_map" json:"model_map"`                     // 请求模型名 → 有序 cfg 名列表
+	AllowDirectAccess bool                `yaml:"allow_direct_access" json:"allow_direct_access"` // 允许用 upstream.name 直接访问（默认 false）
 }
 
 // Config 完整配置（对应 config.yaml）
 type Config struct {
-	Server    Server     `yaml:"server"`
-	Upstreams []Upstream `yaml:"upstreams"`
-	Projects  []Project  `yaml:"projects"`
+	Server    Server     `yaml:"server" json:"server"`
+	Upstreams []Upstream `yaml:"upstreams" json:"upstreams"`
+	Projects  []Project  `yaml:"projects" json:"projects"`
 }
 
 // ConfigSnapshot 运行时快照，包含索引后的快速查找表
