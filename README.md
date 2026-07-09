@@ -422,6 +422,16 @@ ccp stats myproject --model claude-opus-4-8  # 按模型过滤
 
 ---
 
+## 网页后台
+
+```bash
+ccp admin set-password          # 设置后台密码（交互式），重启 ccp-proxy 生效
+# 访问 http://127.0.0.1:8788
+```
+后台可管理 upstream/project/mapping、查看请求日志、查看 token 用量。Docker 场景设 `CC_PROXY_ADMIN_LISTEN=0.0.0.0:8788`。
+
+---
+
 ## 部署运维
 
 ### systemd 自启
