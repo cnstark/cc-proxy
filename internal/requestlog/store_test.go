@@ -1,8 +1,10 @@
 package requestlog
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func newTestStore(t *testing.T, maxDays int) *Store {
@@ -67,5 +69,61 @@ func TestRecordConcurrent(t *testing.T) {
 	rows := s.Query(QueryParams{Limit: 5000})
 	if len(rows) != 1000 {
 		t.Errorf("期望 1000 行，得到 %d", len(rows))
+	}
+}
+
+func TestFlushAfterCloseDoesNotDeadlock(t *testing.T) {
+	s := newTestStore(t, 30)
+	s.Close()
+	done := make(chan struct{})
+	go func() {
+		s.Flush() // must not block
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Flush after Close deadlocked")
+	}
+}
+
+func TestCloseDrainsPendingBatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "r.db")
+	s, err := NewStore(path, 30)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	for i := 0; i < 10; i++ {
+		s.Record(Entry{Project: "p1", Status: 200})
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	s2, err := NewStore(path, 30)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer s2.Close()
+	rows := s2.Query(QueryParams{Limit: 100})
+	if len(rows) != 10 {
+		t.Errorf("期望 10 行（Close 前应 drain 挂起 batch），得到 %d", len(rows))
+	}
+}
+
+func TestStoreDbFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "r.db")
+	s, err := NewStore(path, 30)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer s.Close()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("期望 0600，得到 %v", info.Mode().Perm())
 	}
 }

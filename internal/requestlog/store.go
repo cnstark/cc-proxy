@@ -74,6 +74,7 @@ type Store struct {
 	ch       chan any // Entry 或 syncReq
 	stopCh   chan struct{}
 	stopOnce sync.Once
+	done     chan struct{}
 	maxDays  int
 	subsMu   sync.Mutex
 	nextSub  int
@@ -101,8 +102,13 @@ func NewStore(path string, maxDays int) (*Store, error) {
 		db:      db,
 		ch:      make(chan any, channelBuf),
 		stopCh:  make(chan struct{}),
+		done:    make(chan struct{}),
 		maxDays: maxDays,
 		subs:    make(map[int]sub),
+	}
+	// 确保 db 文件权限为 0600；失败不阻断初始化。
+	if err := os.Chmod(path, 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "[ccp-proxy] requestlog chmod 0600 失败: %v\n", err)
 	}
 	go s.writeLoop()
 	return s, nil
@@ -118,10 +124,17 @@ func (s *Store) Record(e Entry) {
 }
 
 // Flush 阻塞直到当前已投递的日志全部落库（测试用）。
+// 若 writeLoop 已退出（Close 后），直接返回避免死锁。
 func (s *Store) Flush() {
 	done := make(chan struct{})
-	s.ch <- syncReq{done: done}
-	<-done
+	select {
+	case s.ch <- syncReq{done: done}:
+		select {
+		case <-done:
+		case <-s.done:
+		}
+	case <-s.done:
+	}
 }
 
 func (s *Store) writeLoop() {
@@ -149,8 +162,26 @@ func (s *Store) writeLoop() {
 		case <-time.After(500 * time.Millisecond):
 			flushBatch()
 		case <-s.stopCh:
-			flushBatch()
-			return
+			// 排空 channel 中残留的 Entry/syncReq，避免数据丢失。
+			for {
+				select {
+				case v := <-s.ch:
+					switch x := v.(type) {
+					case Entry:
+						batch = append(batch, x)
+						if len(batch) >= 64 {
+							flushBatch()
+						}
+					case syncReq:
+						flushBatch()
+						close(x.done)
+					}
+				default:
+					flushBatch()
+					close(s.done)
+					return
+				}
+			}
 		}
 	}
 }
@@ -272,5 +303,6 @@ func (s *Store) Query(p QueryParams) []Row {
 // Close 停止写入 goroutine 并关闭 db。幂等。
 func (s *Store) Close() error {
 	s.stopOnce.Do(func() { close(s.stopCh) })
+	<-s.done
 	return s.db.Close()
 }
