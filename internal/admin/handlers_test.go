@@ -101,3 +101,29 @@ func TestRequireAuthAcceptsValidCookie(t *testing.T) {
 		t.Errorf("有效 cookie 应放行")
 	}
 }
+
+func TestStatsReturnsJSON(t *testing.T) {
+	s := newTestServer(t)
+	s.usagePath = filepath.Join(t.TempDir(), "usage.json")
+	rr := httptest.NewRecorder()
+	s.handleStats(rr, httptest.NewRequest("GET", "/api/stats", nil))
+	if rr.Code != 200 {
+		t.Fatalf("期望 200，得到 %d", rr.Code)
+	}
+	if !strings.Contains(rr.Header().Get("content-type"), "json") {
+		t.Errorf("应是 JSON")
+	}
+}
+
+func TestLogsWithNilReqLogReturnsEmpty(t *testing.T) {
+	s := newTestServer(t)
+	s.reqLog = nil
+	rr := httptest.NewRecorder()
+	s.handleLogs(rr, httptest.NewRequest("GET", "/api/logs", nil))
+	if rr.Code != 200 {
+		t.Fatalf("期望 200，得到 %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "rows") {
+		t.Errorf("应返回 rows 字段")
+	}
+}

@@ -2,10 +2,14 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cnstark/cc-proxy/internal/requestlog"
+	"github.com/cnstark/cc-proxy/internal/usage"
 )
 
 // Server 后台子服务器状态。
@@ -69,4 +73,82 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"admin_enabled": s.enabled,
 		"time":          time.Now().Format(time.RFC3339),
 	})
+}
+
+// handleStats 返回用量 JSON。
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	since := r.URL.Query().Get("since")
+	if since == "" {
+		since = "7d"
+	}
+	model := r.URL.Query().Get("model")
+	f, err := usage.LoadFile(s.usagePath)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"rows": []any{}})
+		return
+	}
+	sinceDate, _ := parseSince(since)
+	rows := usage.Query(f, project, model, sinceDate)
+	writeJSON(w, 200, map[string]any{"rows": rows})
+}
+
+// handleLogs 返回请求日志分页。
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if s.reqLog == nil {
+		writeJSON(w, 200, map[string]any{"rows": []any{}})
+		return
+	}
+	rows := s.reqLog.Query(requestlog.QueryParams{
+		Project: r.URL.Query().Get("project"),
+		Limit:   100,
+	})
+	writeJSON(w, 200, map[string]any{"rows": rows})
+}
+
+// handleLogsStream SSE 推送新请求日志。
+func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
+	if s.reqLog == nil {
+		http.Error(w, `{"error":"请求日志未启用"}`, http.StatusServiceUnavailable)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, `{"error":"不支持流式"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "text/event-stream")
+	w.Header().Set("cache-control", "no-cache")
+	project := r.URL.Query().Get("project")
+	ch, cancel := s.reqLog.Subscribe(project)
+	defer cancel()
+	for {
+		select {
+		case row, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(row)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// parseSince 本地版（usage.parseSince 包内私有）。
+func parseSince(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Now().AddDate(0, 0, -7).Format("2006-01-02"), nil
+	}
+	if strings.HasSuffix(s, "d") {
+		n, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil || n < 0 {
+			return "", err
+		}
+		return time.Now().AddDate(0, 0, -n).Format("2006-01-02"), nil
+	}
+	return s, nil
 }
