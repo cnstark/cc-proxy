@@ -233,6 +233,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rewrittenBody, err := rewriteRequestBody(body, target.Model)
 		if err != nil {
 			h.log.InfoContext(r.Context(), "rewrite failed", "error", err.Error())
+			reqErrStr = "request body rewrite failed"
 			writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 			return
 		}
@@ -267,6 +268,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"upstream", target.Upstream,
 				"error", startedErr.Err.Error(),
 			)
+			reqErrStr = "upstream failed after response started"
 			return
 		}
 		h.log.InfoContext(r.Context(), "upstream failed, trying next",
@@ -298,6 +300,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			hitRealModel = target.Model
 			rewrittenBody, err := rewriteRequestBody(body, target.Model)
 			if err != nil {
+				reqErrStr = "request body rewrite failed"
 				writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 				return
 			}
@@ -319,6 +322,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					"upstream", target.Upstream,
 					"error", startedErr.Err.Error(),
 				)
+				reqErrStr = "upstream failed after response started"
 				return
 			}
 			if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {

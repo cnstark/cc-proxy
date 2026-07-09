@@ -1149,3 +1149,79 @@ func TestHandlerRecordsRequestLog_OffSkips(t *testing.T) {
 		t.Errorf("off 级不应记录，得到 %d 条", len(fl.snapshot()))
 	}
 }
+
+// TestHandlerRecordsRequestLog_ErrorPath 验证 502 失败路径下 reqErrStr 非空，
+// 避免失败请求在 request log 中 Error 字段误空，看起来像成功。
+// 使用返回普通 error 的 forwarder 触发"所有上游均不可用"路径。
+func TestHandlerRecordsRequestLog_ErrorPath(t *testing.T) {
+	errFwd := &errorForwarder{err: fmt.Errorf("simulated connection refused")}
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         errFwd,
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogInfo },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != 502 {
+		t.Fatalf("期望 502，得到 %d", rr.Code)
+	}
+	entries := fl.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("期望 1 条日志，得到 %d", len(entries))
+	}
+	if entries[0].Error == "" {
+		t.Errorf("失败请求应记录非空 Error，得到空（路径: all upstreams failed -> 502）")
+	}
+}
+
+// TestHandlerRecordsRequestLog_ResponseStartedError 验证流式响应中途失败时
+// reqErrStr 非空，对应"upstream failed after response started"路径。
+func TestHandlerRecordsRequestLog_ResponseStartedError(t *testing.T) {
+	fwd := &startedErrForwarder{written: []byte("data: partial")}
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         fwd,
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogInfo },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	entries := fl.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("期望 1 条日志，得到 %d", len(entries))
+	}
+	if entries[0].Error == "" {
+		t.Errorf("ResponseStartedError 应记录非空 Error，得到空")
+	}
+	if entries[0].Error != "" && !strings.Contains(entries[0].Error, "response started") {
+		t.Errorf("Error 应包含 'response started'，得到 %q", entries[0].Error)
+	}
+}
+
+// errorForwarder 始终返回给定 error，不写入响应（非 ResponseStartedError）。
+type errorForwarder struct {
+	err error
+}
+
+func (f *errorForwarder) Forward(cfg config.Upstream, body []byte, headers http.Header, w http.ResponseWriter, c *usage.Collector, log *slog.Logger) error {
+	return f.err
+}
