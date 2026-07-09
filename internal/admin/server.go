@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -20,8 +21,8 @@ import (
 type ServerOption func(*Server)
 
 func WithVersion(v string) ServerOption           { return func(s *Server) { s.version = v } }
-func WithConfigPath(p string) ServerOption         { return func(s *Server) { s.configPath = p } }
-func WithUsagePath(p string) ServerOption          { return func(s *Server) { s.usagePath = p } }
+func WithConfigPath(p string) ServerOption        { return func(s *Server) { s.configPath = p } }
+func WithUsagePath(p string) ServerOption         { return func(s *Server) { s.usagePath = p } }
 func WithReqLog(l *requestlog.Store) ServerOption { return func(s *Server) { s.reqLog = l } }
 
 // NewServer 从 admin.json 加载密码与 session，组装 Server。
@@ -33,7 +34,10 @@ func NewServer(adminPath string, opts ...ServerOption) (*Server, error) {
 	}
 	ac, err := LoadAdmin(adminPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		// LoadAdmin 用 fmt.Errorf("%w") 包装 os.ReadFile 错误，os.IsNotExist 对这种
+		// 再包装的 *fs.PathError 返回 false（Go 已知陷阱）。必须用 errors.Is 才能正确识别
+		// "文件不存在" → 返回 disabled Server（403），而非 error。规格要求绝不裸奔。
+		if errors.Is(err, os.ErrNotExist) {
 			s.enabled = false
 			return s, nil
 		}
@@ -77,7 +81,12 @@ func (s *Server) Mux() http.Handler {
 	authed.HandleFunc("GET /api/logs", s.handleLogs)
 	authed.HandleFunc("GET /api/logs/stream", s.handleLogsStream)
 	authed.HandleFunc("GET /api/stats", s.handleStats)
-	mux.Handle("/api/", s.requireAuth(authed))
+	// Go 1.22+ ServeMux 不允许 method-specific (GET /) 与 method-agnostic (/api/)
+	// 模式共存。注册所有方法前缀以消除冲突。
+	mux.Handle("GET /api/", s.requireAuth(authed))
+	mux.Handle("POST /api/", s.requireAuth(authed))
+	mux.Handle("PUT /api/", s.requireAuth(authed))
+	mux.Handle("DELETE /api/", s.requireAuth(authed))
 	return mux
 }
 
