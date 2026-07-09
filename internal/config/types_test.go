@@ -781,3 +781,20 @@ func TestNewSnapshot_ModelUpstreamsIndex(t *testing.T) {
 		t.Fatalf("ModelUpstreams mismatch.\n  got:  %v\n  want: %v", snap.ModelUpstreams, expected)
 	}
 }
+
+func TestNewSnapshotAdminDefaults(t *testing.T) {
+	cfg := Config{
+		Server:   Server{PrivateKeys: map[string]string{"k": "p"}},
+		Projects: []Project{{Name: "p"}},
+	}
+	snap := NewSnapshot(cfg)
+	if snap.Server.AdminListen != "127.0.0.1:8788" {
+		t.Errorf("AdminListen 默认应为 127.0.0.1:8788，得到 %q", snap.Server.AdminListen)
+	}
+	if snap.Server.RequestLogEnabled == nil || *snap.Server.RequestLogEnabled != true {
+		t.Errorf("RequestLogEnabled 默认应为 true，得到 %v", snap.Server.RequestLogEnabled)
+	}
+	if snap.Server.RequestLogMaxDays == nil || *snap.Server.RequestLogMaxDays != 30 {
+		t.Errorf("RequestLogMaxDays 默认应为 30，得到 %v", snap.Server.RequestLogMaxDays)
+	}
+}

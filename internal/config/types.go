@@ -3,14 +3,18 @@ package config
 import "time"
 
 // Server 代理服务器配置。
-// LogLevel / LogFile / LogMaxDays 仅在启动时读取，不支持热重载，修改后需重启 ccp-proxy 生效。
+// LogLevel / LogFile / LogMaxDays / UsageStats 仅在启动时读取，不支持热重载，修改后需重启 ccp-proxy 生效。
+// AdminListen / RequestLogEnabled / RequestLogMaxDays 同样启动时读取（后台端口与请求日志库路径不热重载）。
 type Server struct {
-	Listen      string            `yaml:"listen"`
-	LogLevel    LogLevel          `yaml:"log_level"`     // 守护进程日志级别，默认 info
-	LogFile     string            `yaml:"log_file"`      // 自定义日志文件路径，空=默认路径
-	LogMaxDays  *int              `yaml:"log_max_days"`  // 日志保留天数，nil=默认7，0=永久保留
-	UsageStats  bool              `yaml:"usage_stats"`
-	PrivateKeys map[string]string `yaml:"private_keys"` // key → project name
+	Listen              string            `yaml:"listen"`
+	LogLevel            LogLevel          `yaml:"log_level"`              // 守护进程日志级别，默认 info
+	LogFile             string            `yaml:"log_file"`               // 自定义日志文件路径，空=默认路径
+	LogMaxDays          *int              `yaml:"log_max_days"`           // 日志保留天数，nil=默认7，0=永久保留
+	UsageStats          bool              `yaml:"usage_stats"`
+	PrivateKeys         map[string]string `yaml:"private_keys"`            // key → project name
+	AdminListen         string            `yaml:"admin_listen"`           // 后台监听地址，默认 127.0.0.1:8788
+	RequestLogEnabled   *bool             `yaml:"requestlog_enabled"`     // nil/true=开启请求日志
+	RequestLogMaxDays   *int              `yaml:"requestlog_max_days"`    // nil=30，0=永久保留
 }
 
 // Upstream 上游 API 配置（cfg）
@@ -89,6 +93,20 @@ func NewSnapshot(cfg Config) ConfigSnapshot {
 	if cfg.Server.LogMaxDays == nil {
 		d := 7
 		cfg.Server.LogMaxDays = &d
+	}
+	// 默认 admin_listen
+	if cfg.Server.AdminListen == "" {
+		cfg.Server.AdminListen = "127.0.0.1:8788"
+	}
+	// 默认 requestlog_enabled = true
+	if cfg.Server.RequestLogEnabled == nil {
+		t := true
+		cfg.Server.RequestLogEnabled = &t
+	}
+	// 默认 requestlog_max_days = 30（nil=30；0=永久）
+	if cfg.Server.RequestLogMaxDays == nil {
+		d := 30
+		cfg.Server.RequestLogMaxDays = &d
 	}
 	// model → 有序 upstream 名反查表（按 upstream 在配置里的出现顺序）
 	modelUps := make(map[string][]string)
