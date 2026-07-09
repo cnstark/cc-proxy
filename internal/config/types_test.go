@@ -765,7 +765,7 @@ func TestValidate_ModelMapModelNotServed(t *testing.T) {
 
 func TestNewSnapshot_ModelUpstreamsIndex(t *testing.T) {
 	cfg := Config{
-		Server:    Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
+		Server: Server{Listen: "127.0.0.1:8787", PrivateKeys: map[string]string{"sk-cp-key1": "p1"}},
 		Upstreams: []Upstream{
 			{Name: "cfg1", URL: "https://a.com", APIKey: "k1", Models: []string{"m1", "m2"}, Timeout: 60 * time.Second},
 			{Name: "cfg2", URL: "https://b.com", APIKey: "k2", Models: []string{"m2"}, Timeout: 30 * time.Second},

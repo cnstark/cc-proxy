@@ -41,16 +41,16 @@ type Forwarder interface {
 
 // Handler 代理 HTTP handler
 type Handler struct {
-	auth         AuthStore
-	resolver     ModelResolver
-	lookup       ConfigLookup
-	forwarder    Forwarder
-	log          *slog.Logger
-	tracker      usage.Recorder          // nil = usage 关闭
-	usageEnabled bool                    // 来自 per-request snapshot.Server.UsageStats
-	breaker      *circuitbreaker.Breaker // nil = 不启用熔断
-	reqLog       requestlog.Recorder     // nil = 不记请求日志
-	requestLogEnabled bool               // 来自 snap.Server.RequestLogEnabled
+	auth              AuthStore
+	resolver          ModelResolver
+	lookup            ConfigLookup
+	forwarder         Forwarder
+	log               *slog.Logger
+	tracker           usage.Recorder               // nil = usage 关闭
+	usageEnabled      bool                         // 来自 per-request snapshot.Server.UsageStats
+	breaker           *circuitbreaker.Breaker      // nil = 不启用熔断
+	reqLog            requestlog.Recorder          // nil = 不记请求日志
+	requestLogEnabled bool                         // 来自 snap.Server.RequestLogEnabled
 	projectLogLevel   func(string) config.LogLevel // 查项目 log_level，决定是否记 body
 }
 

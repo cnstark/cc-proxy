@@ -104,14 +104,14 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Build handler with current snapshot dependencies
 	handler := &Handler{
-		auth:         h.authStore,
-		resolver:     resolver,
-		lookup:       lookup,
-		forwarder:    h.forwarder,
-		log:          reqLogger,
-		tracker:      h.tracker,
-		usageEnabled: snap.Server.UsageStats,
-		breaker:      h.breaker,
+		auth:              h.authStore,
+		resolver:          resolver,
+		lookup:            lookup,
+		forwarder:         h.forwarder,
+		log:               reqLogger,
+		tracker:           h.tracker,
+		usageEnabled:      snap.Server.UsageStats,
+		breaker:           h.breaker,
 		reqLog:            h.reqLog,
 		requestLogEnabled: snap.Server.RequestLogEnabled != nil && *snap.Server.RequestLogEnabled,
 		projectLogLevel: func(name string) config.LogLevel {
