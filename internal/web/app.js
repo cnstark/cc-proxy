@@ -285,6 +285,83 @@ function renderListField(f, wrap) {
   return {node: wrap, getValue: () => items.map(s => s.trim()).filter(Boolean)};
 }
 
+// renderSecretField 脱敏 apikey 字段：默认只读显示脱敏占位 +「重置」按钮；
+// 点「重置」切换为 password 明文输入框。getValue 返回 {reset, value}：
+//   未重置 → {reset:false, value:''}（onSubmit 不改 u.apikey，保留占位→后端保留原值）；
+//   重置   → {reset:true, value: 明文}（onSubmit 设 u.apikey=value）。
+function renderSecretField(f, wrap) {
+  let reset = false;
+  const dispBox = el('div', {class:'field-row'});
+  const inputBox = el('div', {class:'field-row', style:'display:none'});
+  const maskedText = el('code', {}, f.value || '(未设置)');
+  dispBox.appendChild(maskedText);
+  dispBox.appendChild(el('button', {class:'ghost', onclick: () => {
+    reset = true;
+    dispBox.style.display = 'none';
+    inputBox.style.display = '';
+  }}, '重置'));
+  const inp = el('input', {type:'password', placeholder:'输入新 apikey'});
+  inputBox.appendChild(inp);
+  wrap.appendChild(dispBox);
+  wrap.appendChild(inputBox);
+  return {node: wrap, getValue: () => ({reset, value: reset ? inp.value : ''})};
+}
+
+// renderOrderedListField 有序列表（mapping targets）。每项 = upstream 下拉 + model 下拉 + 上下移 + 删除。
+// f.upstreams 取自 cfg.upstreams（每项含 name/models）。f.value 是现有 upstream/model 串数组。
+// getValue 返回 string[]，每项为组装的 upstream/model 串，行序=主备顺序。
+// 双下拉利用现有配置数据做前端即时约束（杜绝手敲格式错误），与后端 config.Validate 形成双重保险。
+function renderOrderedListField(f, wrap) {
+  const ups = f.upstreams || [];
+  // 反解析现有 upstream/model 串
+  const items = (Array.isArray(f.value) ? f.value : []).map(s => {
+    const idx = s.indexOf('/');
+    if (idx <= 0 || idx === s.length - 1) return {upstream:'', model:''};
+    return {upstream: s.slice(0, idx), model: s.slice(idx + 1)};
+  });
+  const rows = el('div', {});
+  function modelsOf(upName) {
+    const u = ups.find(x => x.name === upName);
+    return u ? (u.models || []) : [];
+  }
+  function draw() {
+    rows.innerHTML = '';
+    items.forEach((it, i) => {
+      const upSel = el('select', {});
+      ups.forEach(u => upSel.appendChild(el('option', {value:u.name}, u.name)));
+      upSel.value = it.upstream || (ups[0] && ups[0].name) || '';
+      it.upstream = upSel.value;
+      const modelSel = el('select', {});
+      function fillModels() {
+        modelSel.innerHTML = '';
+        const ms = modelsOf(upSel.value);
+        ms.forEach(m => modelSel.appendChild(el('option', {value:m}, m)));
+        if (ms.includes(it.model)) modelSel.value = it.model;
+        else if (ms[0]) { it.model = ms[0]; modelSel.value = it.model; }
+        else it.model = '';
+      }
+      fillModels();
+      upSel.addEventListener('change', () => { it.upstream = upSel.value; it.model = ''; fillModels(); });
+      modelSel.addEventListener('change', () => { it.model = modelSel.value; });
+      rows.appendChild(el('div', {class:'field-row'}, [
+        upSel, modelSel,
+        el('button', {class:'ghost', onclick: () => { if (i > 0) { [items[i-1], items[i]] = [items[i], items[i-1]]; draw(); } }}, '上移'),
+        el('button', {class:'ghost', onclick: () => { if (i < items.length - 1) { [items[i+1], items[i]] = [items[i], items[i+1]]; draw(); } }}, '下移'),
+        el('button', {class:'danger', onclick: () => { items.splice(i, 1); draw(); }}, '删除'),
+      ]));
+    });
+  }
+  draw();
+  wrap.appendChild(rows);
+  wrap.appendChild(el('button', {class:'ghost', onclick: () => {
+    const firstUp = (ups[0] && ups[0].name) || '';
+    const firstModel = modelsOf(firstUp)[0] || '';
+    items.push({upstream: firstUp, model: firstModel});
+    draw();
+  }}, '添加项'));
+  return {node: wrap, getValue: () => items.filter(it => it.upstream && it.model).map(it => it.upstream + '/' + it.model)};
+}
+
 function addUpstream(cfg){ const name=prompt('name'); if(!name)return; const url=prompt('url'); const ak=prompt('apikey'); const ms=prompt('models 逗号分隔').split(','); cfg.upstreams.push({name,url,apikey:ak,models:ms,timeout:60000000000}); saveConfig(cfg); }
 function editUpstream(cfg,u){ const url=prompt('url',u.url); if(url!=null)u.url=url; const ak=prompt('apikey（留空保留）',''); if(ak)u.apikey=ak; saveConfig(cfg); }
 async function delUpstream(cfg,name){ if(!confirm('删除 '+name))return; cfg.upstreams=cfg.upstreams.filter(u=>u.name!==name); saveConfig(cfg); }
