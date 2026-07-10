@@ -4,13 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cnstark/cc-proxy/internal/auth"
-	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
-	"github.com/cnstark/cc-proxy/internal/config"
-	"github.com/cnstark/cc-proxy/internal/logging"
-	"github.com/cnstark/cc-proxy/internal/project"
-	"github.com/cnstark/cc-proxy/internal/upstream"
-	"github.com/cnstark/cc-proxy/internal/usage"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,8 +11,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/cnstark/cc-proxy/internal/auth"
+	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/logging"
+	"github.com/cnstark/cc-proxy/internal/project"
+	"github.com/cnstark/cc-proxy/internal/requestlog"
+	"github.com/cnstark/cc-proxy/internal/upstream"
+	"github.com/cnstark/cc-proxy/internal/usage"
 )
 
 // configLookup implements ConfigLookup interface for tests
@@ -325,7 +328,7 @@ projects:
 	}
 	authStore := auth.NewStore(snap.Server.PrivateKeys)
 	fwd := NewStreamingForwarder()
-	handler := NewReloadingHandler(authStore, fwd, watcher, tracker, nil, logging.NewNopLogger())
+	handler := NewReloadingHandler(authStore, fwd, watcher, tracker, nil, nil, logging.NewNopLogger())
 
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
 	req.Header.Set("x-api-key", "sk-cp-key1")
@@ -989,4 +992,236 @@ func TestHandler_MainLoop_ResponseStartedError_NoFailover(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "data: partial") {
 		t.Fatalf("expected partial response preserved, got %q", rec.Body.String())
 	}
+}
+
+// ── statusRecorder tests ──
+
+func TestStatusRecorderCapturesStatusAndFlushes(t *testing.T) {
+	rr := httptest.NewRecorder()
+	sr := &statusRecorder{ResponseWriter: rr}
+	sr.WriteHeader(404)
+	if sr.status != 404 {
+		t.Errorf("状态未捕获: %d", sr.status)
+	}
+	sr.body = &bytes.Buffer{}
+	sr.Write([]byte("hello"))
+	if sr.body.String() != "hello" {
+		t.Errorf("body 未 tee: %q", sr.body.String())
+	}
+	if _, ok := interface{}(sr).(http.Flusher); !ok {
+		t.Errorf("statusRecorder 必须实现 http.Flusher（否则流式失效）")
+	}
+	sr.Flush() // 不应 panic
+}
+
+func TestStatusRecorderImplicit200(t *testing.T) {
+	rr := httptest.NewRecorder()
+	sr := &statusRecorder{ResponseWriter: rr}
+	sr.Write([]byte("x"))
+	if sr.status != 200 {
+		t.Errorf("隐式状态应为 200，得到 %d", sr.status)
+	}
+}
+
+// ── request log integration tests ──
+
+// fakeReqLog 收集 Record 调用，供断言。实现 requestlog.Recorder。
+type fakeReqLog struct {
+	mu      sync.Mutex
+	entries []requestlog.Entry
+}
+
+func (f *fakeReqLog) Record(e requestlog.Entry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entries = append(f.entries, e)
+}
+
+func (f *fakeReqLog) snapshot() []requestlog.Entry {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := make([]requestlog.Entry, len(f.entries))
+	copy(cp, f.entries)
+	return cp
+}
+
+func TestHandlerRecordsRequestLog(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("content-type", "text/event-stream")
+		w.WriteHeader(200)
+		w.Write([]byte("data: hi\n\n"))
+		flusher.Flush()
+	}))
+	defer ts.Close()
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         NewStreamingForwarder(),
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogInfo },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != 200 {
+		t.Fatalf("期望 200，得到 %d", rr.Code)
+	}
+	entries := fl.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("期望 1 条日志，得到 %d", len(entries))
+	}
+	e := entries[0]
+	if e.Project != "p1" || e.Model != "m" || e.Upstream != "cfg1" || e.RealModel != "real" || e.Status != 200 {
+		t.Errorf("日志字段不匹配: %+v", e)
+	}
+	if e.RequestBody != "" || e.ResponseBody != "" {
+		t.Errorf("info 级不应记 body: %+v", e)
+	}
+}
+
+func TestHandlerRecordsRequestLog_DebugBodies(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		w.WriteHeader(200)
+		w.Write([]byte("data: hi\n\n"))
+	}))
+	defer ts.Close()
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         NewStreamingForwarder(),
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogDebug },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	entries := fl.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("期望 1 条日志，得到 %d", len(entries))
+	}
+	e := entries[0]
+	if e.RequestBody == "" || e.ResponseBody == "" {
+		t.Errorf("debug 级应记 body: %+v", e)
+	}
+}
+
+func TestHandlerRecordsRequestLog_OffSkips(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         NewStreamingForwarder(),
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogOff },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if len(fl.snapshot()) != 0 {
+		t.Errorf("off 级不应记录，得到 %d 条", len(fl.snapshot()))
+	}
+}
+
+// TestHandlerRecordsRequestLog_ErrorPath 验证 502 失败路径下 reqErrStr 非空，
+// 避免失败请求在 request log 中 Error 字段误空，看起来像成功。
+// 使用返回普通 error 的 forwarder 触发"所有上游均不可用"路径。
+func TestHandlerRecordsRequestLog_ErrorPath(t *testing.T) {
+	errFwd := &errorForwarder{err: fmt.Errorf("simulated connection refused")}
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: "http://127.0.0.1:1", APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         errFwd,
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogInfo },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != 502 {
+		t.Fatalf("期望 502，得到 %d", rr.Code)
+	}
+	entries := fl.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("期望 1 条日志，得到 %d", len(entries))
+	}
+	if entries[0].Error == "" {
+		t.Errorf("失败请求应记录非空 Error，得到空（路径: all upstreams failed -> 502）")
+	}
+}
+
+// TestHandlerRecordsRequestLog_ResponseStartedError 验证流式响应中途失败时
+// reqErrStr 非空，对应"upstream failed after response started"路径。
+func TestHandlerRecordsRequestLog_ResponseStartedError(t *testing.T) {
+	fwd := &startedErrForwarder{written: []byte("data: partial")}
+
+	fl := &fakeReqLog{}
+	h := &Handler{
+		auth:              auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:          newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/real"}}}),
+		lookup:            &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: "http://example.com", APIKey: "k", Models: []string{"real"}, Timeout: 5 * time.Second}}},
+		forwarder:         fwd,
+		log:               logging.NewNopLogger(),
+		reqLog:            fl,
+		requestLogEnabled: true,
+		projectLogLevel:   func(string) config.LogLevel { return config.LogInfo },
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	entries := fl.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("期望 1 条日志，得到 %d", len(entries))
+	}
+	if entries[0].Error == "" {
+		t.Errorf("ResponseStartedError 应记录非空 Error，得到空")
+	}
+	if entries[0].Error != "" && !strings.Contains(entries[0].Error, "response started") {
+		t.Errorf("Error 应包含 'response started'，得到 %q", entries[0].Error)
+	}
+}
+
+// errorForwarder 始终返回给定 error，不写入响应（非 ResponseStartedError）。
+type errorForwarder struct {
+	err error
+}
+
+func (f *errorForwarder) Forward(cfg config.Upstream, body []byte, headers http.Header, w http.ResponseWriter, c *usage.Collector, log *slog.Logger) error {
+	return f.err
 }

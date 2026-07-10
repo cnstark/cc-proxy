@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cnstark/cc-proxy/internal/admin"
 	"github.com/cnstark/cc-proxy/internal/config"
 	"github.com/cnstark/cc-proxy/internal/logging"
 	"github.com/cnstark/cc-proxy/internal/usage"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -592,6 +594,57 @@ func main() {
 	proxyCmd.AddCommand(proxyStartCmd, proxyStopCmd, proxyStatusCmd, proxyLogsCmd)
 	rootCmd.AddCommand(proxyCmd)
 
+	// === admin ===
+	adminCmd := &cobra.Command{Use: "admin", Short: "后台管理（密码）"}
+	adminPath := filepath.Join(filepath.Dir(configPath), "admin.json")
+
+	adminSetPwCmd := &cobra.Command{
+		Use:   "set-password",
+		Short: "设置后台登录密码",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pw, err := readPasswordInteractive("请输入密码: ")
+			if err != nil {
+				return err
+			}
+			pw2, err := readPasswordInteractive("再次输入: ")
+			if err != nil {
+				return err
+			}
+			if pw != pw2 {
+				return fmt.Errorf("两次输入不一致")
+			}
+			if len(pw) < 6 {
+				return fmt.Errorf("密码至少 6 位")
+			}
+			hash, err := admin.HashPassword(pw)
+			if err != nil {
+				return err
+			}
+			secret, err := admin.GenSessionSecret()
+			if err != nil {
+				return err
+			}
+			if err := admin.SaveAdmin(adminPath, admin.AdminConfig{PasswordHash: hash, SessionSecret: secret, Enabled: true}); err != nil {
+				return err
+			}
+			fmt.Println("后台密码已设置，重启 ccp-proxy 生效。访问 http://127.0.0.1:8788")
+			return nil
+		},
+	}
+	adminUnsetCmd := &cobra.Command{
+		Use:   "unset-password",
+		Short: "关闭后台（删除 admin.json）",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := os.Remove(adminPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			fmt.Println("已关闭后台，重启 ccp-proxy 生效。")
+			return nil
+		},
+	}
+	adminCmd.AddCommand(adminSetPwCmd, adminUnsetCmd)
+	rootCmd.AddCommand(adminCmd)
+
 	// === stats ===
 	statsCmd := &cobra.Command{
 		Use:   "stats [project]",
@@ -624,6 +677,16 @@ func main() {
 }
 
 // === helpers ===
+
+func readPasswordInteractive(prompt string) (string, error) {
+	fmt.Fprint(os.Stderr, prompt)
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		return "", fmt.Errorf("读取密码失败: %w", err)
+	}
+	return string(b), nil
+}
 
 func loadConfig() (config.Config, error) {
 	snap, err := config.LoadFile(configPath)

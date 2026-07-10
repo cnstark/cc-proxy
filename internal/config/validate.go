@@ -135,6 +135,11 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("server.log_max_days: 不能为负数，当前 %d", *cfg.Server.LogMaxDays)
 	}
 
+	// 10. requestlog_max_days 范围
+	if cfg.Server.RequestLogMaxDays != nil && *cfg.Server.RequestLogMaxDays < 0 {
+		return fmt.Errorf("server.requestlog_max_days: 不能为负数，当前 %d", *cfg.Server.RequestLogMaxDays)
+	}
+
 	return nil
 }
 

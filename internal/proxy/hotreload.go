@@ -4,15 +4,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/cnstark/cc-proxy/internal/auth"
-	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
-	"github.com/cnstark/cc-proxy/internal/config"
-	"github.com/cnstark/cc-proxy/internal/project"
-	"github.com/cnstark/cc-proxy/internal/usage"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/cnstark/cc-proxy/internal/auth"
+	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
+	"github.com/cnstark/cc-proxy/internal/config"
+	"github.com/cnstark/cc-proxy/internal/project"
+	"github.com/cnstark/cc-proxy/internal/requestlog"
+	"github.com/cnstark/cc-proxy/internal/usage"
 )
 
 // ReloadingHandler 每次请求从 watcher 获取最新配置快照的热重载 handler。
@@ -23,6 +25,7 @@ type ReloadingHandler struct {
 	watcher   *config.Watcher
 	tracker   usage.Recorder
 	breaker   *circuitbreaker.Breaker
+	reqLog    requestlog.Recorder
 	log       *slog.Logger // 进程级 logger
 }
 
@@ -33,6 +36,7 @@ func NewReloadingHandler(
 	watcher *config.Watcher,
 	tracker usage.Recorder,
 	breaker *circuitbreaker.Breaker,
+	reqLog requestlog.Recorder,
 	log *slog.Logger,
 ) *ReloadingHandler {
 	return &ReloadingHandler{
@@ -41,6 +45,7 @@ func NewReloadingHandler(
 		watcher:   watcher,
 		tracker:   tracker,
 		breaker:   breaker,
+		reqLog:    reqLog,
 		log:       log,
 	}
 }
@@ -99,14 +104,22 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Build handler with current snapshot dependencies
 	handler := &Handler{
-		auth:         h.authStore,
-		resolver:     resolver,
-		lookup:       lookup,
-		forwarder:    h.forwarder,
-		log:          reqLogger,
-		tracker:      h.tracker,
-		usageEnabled: snap.Server.UsageStats,
-		breaker:      h.breaker,
+		auth:              h.authStore,
+		resolver:          resolver,
+		lookup:            lookup,
+		forwarder:         h.forwarder,
+		log:               reqLogger,
+		tracker:           h.tracker,
+		usageEnabled:      snap.Server.UsageStats,
+		breaker:           h.breaker,
+		reqLog:            h.reqLog,
+		requestLogEnabled: snap.Server.RequestLogEnabled != nil && *snap.Server.RequestLogEnabled,
+		projectLogLevel: func(name string) config.LogLevel {
+			if p, ok := snap.Projects[name]; ok {
+				return p.LogLevel
+			}
+			return config.LogOff
+		},
 	}
 
 	handler.ServeHTTP(w, r)

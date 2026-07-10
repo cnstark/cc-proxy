@@ -9,11 +9,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
 	"github.com/cnstark/cc-proxy/internal/config"
 	"github.com/cnstark/cc-proxy/internal/logging"
 	"github.com/cnstark/cc-proxy/internal/project"
+	"github.com/cnstark/cc-proxy/internal/requestlog"
 	"github.com/cnstark/cc-proxy/internal/usage"
 )
 
@@ -39,14 +41,17 @@ type Forwarder interface {
 
 // Handler 代理 HTTP handler
 type Handler struct {
-	auth         AuthStore
-	resolver     ModelResolver
-	lookup       ConfigLookup
-	forwarder    Forwarder
-	log          *slog.Logger
-	tracker      usage.Recorder          // nil = usage 关闭
-	usageEnabled bool                    // 来自 per-request snapshot.Server.UsageStats
-	breaker      *circuitbreaker.Breaker // nil = 不启用熔断
+	auth              AuthStore
+	resolver          ModelResolver
+	lookup            ConfigLookup
+	forwarder         Forwarder
+	log               *slog.Logger
+	tracker           usage.Recorder               // nil = usage 关闭
+	usageEnabled      bool                         // 来自 per-request snapshot.Server.UsageStats
+	breaker           *circuitbreaker.Breaker      // nil = 不启用熔断
+	reqLog            requestlog.Recorder          // nil = 不记请求日志
+	requestLogEnabled bool                         // 来自 snap.Server.RequestLogEnabled
+	projectLogLevel   func(string) config.LogLevel // 查项目 log_level，决定是否记 body
 }
 
 // NewHandler 创建代理 handler
@@ -70,6 +75,45 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// 请求日志：statusRecorder 捕获状态码，debug 级 tee 响应体。
+	// w = sr 后，函数体内所有 writeError(w,...)/Forward(...,w,...)（含 recover 闭包）自动走 sr。
+	sr := &statusRecorder{ResponseWriter: w}
+	w = sr
+	start := time.Now()
+	var body []byte
+	var projName, reqModelStr, hitUpstream, hitRealModel, reqErrStr string
+
+	defer func() {
+		if h.reqLog == nil || !h.requestLogEnabled {
+			return
+		}
+		lvl := config.LogOff
+		if h.projectLogLevel != nil {
+			lvl = h.projectLogLevel(projName)
+		}
+		if lvl == config.LogOff {
+			return
+		}
+		e := requestlog.Entry{
+			Project:    projName,
+			Method:     r.Method,
+			Path:       r.URL.Path,
+			Model:      reqModelStr,
+			Upstream:   hitUpstream,
+			RealModel:  hitRealModel,
+			Status:     sr.status,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      reqErrStr,
+		}
+		if lvl == config.LogDebug {
+			e.RequestBody = truncStr(string(body), 65536)
+			if sr.body != nil {
+				e.ResponseBody = truncStr(sr.body.String(), 65536)
+			}
+		}
+		h.reqLog.Record(e)
+	}()
+
 	// 1. 鉴权：优先 x-api-key，其次 Authorization: Bearer <key>
 	apiKey := r.Header.Get("x-api-key")
 	if apiKey == "" {
@@ -80,14 +124,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	projectName, ok := h.auth.Authenticate(apiKey)
 	if !ok {
 		h.log.InfoContext(r.Context(), "auth failed", "key_prefix", logging.MaskKey(apiKey))
+		reqErrStr = "auth failed"
 		writeError(w, http.StatusUnauthorized, "authentication_error", "无效的 API key")
 		return
 	}
+	projName = projectName
 
 	// 鉴权成功后附加 project 到 logger。
 	// 安全前提：Handler 由 ReloadingHandler.ServeHTTP 每请求新建，不跨请求共享；
 	// slog.With 返回新 logger 不修改原对象，此处重赋值不会引入数据竞争。
 	h.log = h.log.With("project", projectName)
+
+	// debug 级时初始化 body 缓冲，用于 tee 响应体
+	if h.projectLogLevel != nil && h.projectLogLevel(projectName) == config.LogDebug {
+		sr.body = &bytes.Buffer{}
+	}
 
 	// 2. 记录请求头（debug 级别，辅助排查上游兼容性问题）
 	h.log.DebugContext(r.Context(), "request headers",
@@ -99,11 +150,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// 3. 读取请求体
-	body, err := io.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
+		reqErrStr = "invalid request body"
 		writeError(w, http.StatusBadRequest, "invalid_request_error", "无法读取请求体")
 		return
 	}
+	body = b
 	h.log.DebugContext(r.Context(), "request body received",
 		"body_len", len(body),
 		"content_type", r.Header.Get("content-type"),
@@ -119,14 +172,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"body_len", len(body),
 			"body_tail", truncTail(string(body), 128),
 		)
+		reqErrStr = "invalid request body"
 		writeError(w, http.StatusBadRequest, "invalid_request_error", "请求体 JSON 解析失败")
 		return
 	}
 	requestModel, ok := reqBody["model"].(string)
 	if !ok || requestModel == "" {
+		reqErrStr = "missing model field"
 		writeError(w, http.StatusBadRequest, "invalid_request_error", "请求体缺少 model 字段")
 		return
 	}
+	reqModelStr = requestModel
 
 	// 5. 路由查表
 	targets, ok := h.resolver.Resolve(projectName, requestModel)
@@ -134,6 +190,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log.InfoContext(r.Context(), "model not found",
 			"model", requestModel,
 		)
+		reqErrStr = "model not found"
 		writeError(w, http.StatusNotFound, "not_found_error",
 			fmt.Sprintf("项目 %q 未配置模型 %q 的映射", projectName, requestModel))
 		return
@@ -171,9 +228,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if collector != nil {
 			collector.SetModel(target.Model)
 		}
+		hitUpstream = target.Upstream
+		hitRealModel = target.Model
 		rewrittenBody, err := rewriteRequestBody(body, target.Model)
 		if err != nil {
 			h.log.InfoContext(r.Context(), "rewrite failed", "error", err.Error())
+			reqErrStr = "request body rewrite failed"
 			writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 			return
 		}
@@ -208,6 +268,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"upstream", target.Upstream,
 				"error", startedErr.Err.Error(),
 			)
+			reqErrStr = "upstream failed after response started"
 			return
 		}
 		h.log.InfoContext(r.Context(), "upstream failed, trying next",
@@ -235,8 +296,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if collector != nil {
 				collector.SetModel(target.Model)
 			}
+			hitUpstream = target.Upstream
+			hitRealModel = target.Model
 			rewrittenBody, err := rewriteRequestBody(body, target.Model)
 			if err != nil {
+				reqErrStr = "request body rewrite failed"
 				writeError(w, http.StatusInternalServerError, "internal_error", "请求重写失败")
 				return
 			}
@@ -258,6 +322,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					"upstream", target.Upstream,
 					"error", startedErr.Err.Error(),
 				)
+				reqErrStr = "upstream failed after response started"
 				return
 			}
 			if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {
@@ -270,6 +335,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.log.InfoContext(r.Context(), "all upstreams failed",
 		"model", requestModel,
 	)
+	reqErrStr = "all upstreams failed"
 	writeError(w, http.StatusBadGateway, "upstream_error", "所有上游均不可用")
 }
 
@@ -347,4 +413,36 @@ func truncTail(s string, n int) string {
 		return s
 	}
 	return "...(truncated)..." + s[len(s)-n:]
+}
+
+// statusRecorder 包装 ResponseWriter，捕获状态码并在 debug 级 tee 响应体。
+// 必须实现 http.Flusher 并委托给底层，否则流式 SSE 透传会失效
+// （forward.go 的 http.Flusher 依赖：flusher, canFlush := w.(http.Flusher)）。
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	body   *bytes.Buffer // 非 nil 时 tee 响应体（仅 debug 级）
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.status == 0 {
+		s.status = code
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = 200 // 隐式 200
+	}
+	if s.body != nil {
+		s.body.Write(b) // tee，不阻塞客户端
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }

@@ -44,6 +44,7 @@
       - [计数语义](#计数语义)
       - [查询](#查询)
     - [日志级别](#日志级别)
+  - [网页后台](#网页后台)
   - [部署运维](#部署运维)
     - [systemd 自启](#systemd-自启)
     - [Docker 部署](#docker-部署)
@@ -419,6 +420,16 @@ ccp stats myproject --model claude-opus-4-8  # 按模型过滤
 | `debug` | 在 meta 基础上记录完整请求体和响应体（⚠️ 含 API key，排查后请及时关闭） |
 
 日志格式为结构化 JSON，输出到代理进程的 stderr（`ccp proxy logs` 可查看）。
+
+---
+
+## 网页后台
+
+```bash
+ccp admin set-password          # 设置后台密码（交互式），重启 ccp-proxy 生效
+# 访问 http://127.0.0.1:8788
+```
+后台可管理 upstream/project/mapping、查看请求日志、查看 token 用量。Docker 场景设 `CC_PROXY_ADMIN_LISTEN=0.0.0.0:8788`。
 
 ---
 

@@ -2,16 +2,19 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/cnstark/cc-proxy/internal/admin"
 	"github.com/cnstark/cc-proxy/internal/auth"
 	"github.com/cnstark/cc-proxy/internal/circuitbreaker"
 	"github.com/cnstark/cc-proxy/internal/config"
 	"github.com/cnstark/cc-proxy/internal/logging"
 	"github.com/cnstark/cc-proxy/internal/proxy"
+	"github.com/cnstark/cc-proxy/internal/requestlog"
 	"github.com/cnstark/cc-proxy/internal/usage"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 // version 在构建时通过 -ldflags 注入，默认值为 "dev"
@@ -91,11 +94,57 @@ func main() {
 	tracker := usage.NewTracker(usagePath)
 	defer tracker.Close() // 优雅退出时 final flush
 
+	// requestlog：进程级单例。按 requestlog_enabled 决定是否创建；handler 侧再按项目 log_level AND-gate。
+	reqLogPath := filepath.Join(filepath.Dir(configPath), "requestlog.db")
+	var reqLog *requestlog.Store
+	reqLogEnabled := snap.Server.RequestLogEnabled != nil && *snap.Server.RequestLogEnabled
+	if reqLogEnabled {
+		maxDays := 30
+		if snap.Server.RequestLogMaxDays != nil {
+			maxDays = *snap.Server.RequestLogMaxDays
+		}
+		rl, err := requestlog.NewStore(reqLogPath, maxDays)
+		if err != nil {
+			bootLogger.Error("创建 requestlog 库失败", "error", err)
+		} else {
+			reqLog = rl
+			defer rl.Close()
+		}
+	}
+
 	authStore := auth.NewStore(snap.Server.PrivateKeys)
 	fwd := proxy.NewStreamingForwarder()
 	breaker := circuitbreaker.NewBreaker()
 
-	handler := proxy.NewReloadingHandler(authStore, fwd, watcher, tracker, breaker, logger)
+	// nil 守卫：reqLog 可能为 nil *requestlog.Store，直接传给 requestlog.Recorder 接口参数
+	// 会装箱成非 nil 接口（Go 接口 nil 陷阱），导致 handler 里 h.reqLog == nil 失败。
+	var rec requestlog.Recorder
+	if reqLog != nil {
+		rec = reqLog
+	}
+	handler := proxy.NewReloadingHandler(authStore, fwd, watcher, tracker, breaker, rec, logger)
+
+	// 后台子服务器
+	adminPath := filepath.Join(filepath.Dir(configPath), "admin.json")
+	adminSrv, err := admin.NewServer(adminPath,
+		admin.WithVersion(version),
+		admin.WithConfigPath(configPath),
+		admin.WithUsagePath(usagePath),
+		admin.WithReqLog(reqLog),
+	)
+	if err != nil {
+		bootLogger.Error("创建后台失败", "error", err)
+	} else {
+		adminListen := snap.Server.AdminListen
+		if v := os.Getenv("CC_PROXY_ADMIN_LISTEN"); v != "" {
+			adminListen = v
+		}
+		go func() {
+			if err := adminSrv.Start(adminListen, logger); err != nil {
+				bootLogger.Error("后台退出", "error", err)
+			}
+		}()
+	}
 
 	srv := proxy.NewServer(watcher, handler, logger)
 	if err := srv.Start(snap.Server.Listen); err != nil {
