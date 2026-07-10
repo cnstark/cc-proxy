@@ -129,6 +129,7 @@ function renderMappings(cfg) {
       box.appendChild(el('div',{},[
         el('code',{},model), ' → ',
         el('span',{class:'muted'}, targets.join(', ')),
+        el('button',{class:'ghost',onclick:()=>editMapping(cfg,p.name,model)},'编辑'),
         el('button',{class:'danger',onclick:()=>delMapping(cfg,p.name,model)},'删除'),
       ]));
     }
@@ -479,8 +480,52 @@ function delProject(cfg, name) {
     renderConfig();
   });
 }
-function addMapping(cfg,proj){ const m=prompt('请求模型名'); if(!m)return; const t=prompt('upstream/model（逗号分隔多个为主备）').split(','); const p=cfg.projects.find(x=>x.name===proj); p.model_map[m]=t; saveConfig(cfg); }
-function delMapping(cfg,proj,m){ const p=cfg.projects.find(x=>x.name===proj); delete p.model_map[m]; saveConfig(cfg); }
+function addMapping(cfg, proj) {
+  const p = cfg.projects.find(x => x.name === proj);
+  if (!p) return;
+  openModal({
+    title: '添加映射',
+    fields: [
+      {key:'model', label:'请求模型名', type:'text', required:true, placeholder:'如 claude-sonnet-4-6'},
+      {key:'targets', label:'主备 target（上=主，下=备）', type:'ordered-list', value:[], upstreams: cfg.upstreams},
+    ],
+    onSubmit: async (v) => {
+      p.model_map[v.model] = v.targets;
+      const r = await saveConfig(cfg);
+      if (!r.ok) return {error: r.error};
+      renderConfig();
+    },
+  });
+}
+
+function editMapping(cfg, proj, model) {
+  const p = cfg.projects.find(x => x.name === proj);
+  if (!p) return;
+  openModal({
+    title: '编辑映射: ' + model,
+    fields: [
+      {key:'model', label:'请求模型名', type:'text', readonly:true, value:model},
+      {key:'targets', label:'主备 target（上=主，下=备）', type:'ordered-list', value: p.model_map[model] || [], upstreams: cfg.upstreams},
+    ],
+    onSubmit: async (v) => {
+      p.model_map[v.model] = v.targets;
+      const r = await saveConfig(cfg);
+      if (!r.ok) return {error: r.error};
+      renderConfig();
+    },
+  });
+}
+
+function delMapping(cfg, proj, m) {
+  confirmModal('删除映射「' + m + '」?', async () => {
+    const p = cfg.projects.find(x => x.name === proj);
+    if (!p) return {error: '项目不存在'};
+    delete p.model_map[m];
+    const r = await saveConfig(cfg);
+    if (!r.ok) return {error: r.error};
+    renderConfig();
+  });
+}
 
 let usageChart = null;
 async function renderUsage() {
