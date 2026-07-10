@@ -362,9 +362,61 @@ function renderOrderedListField(f, wrap) {
   return {node: wrap, getValue: () => items.filter(it => it.upstream && it.model).map(it => it.upstream + '/' + it.model)};
 }
 
-function addUpstream(cfg){ const name=prompt('name'); if(!name)return; const url=prompt('url'); const ak=prompt('apikey'); const ms=prompt('models 逗号分隔').split(','); cfg.upstreams.push({name,url,apikey:ak,models:ms,timeout:60000000000}); saveConfig(cfg); }
-function editUpstream(cfg,u){ const url=prompt('url',u.url); if(url!=null)u.url=url; const ak=prompt('apikey（留空保留）',''); if(ak)u.apikey=ak; saveConfig(cfg); }
-async function delUpstream(cfg,name){ if(!confirm('删除 '+name))return; cfg.upstreams=cfg.upstreams.filter(u=>u.name!==name); saveConfig(cfg); }
+function addUpstream(cfg) {
+  openModal({
+    title: '添加上游',
+    fields: [
+      {key:'name', label:'name', type:'text', required:true},
+      {key:'url', label:'url', type:'text', required:true, placeholder:'https://api.example.com'},
+      {key:'apikey', label:'apikey', type:'password', required:true},
+      {key:'models', label:'models（每行一个）', type:'list', required:true, value:[]},
+      {key:'timeout', label:'timeout（秒）', type:'text', value:'60', placeholder:'60'},
+    ],
+    onSubmit: async (v) => {
+      cfg.upstreams.push({
+        name: v.name.trim(),
+        url: v.url.trim(),
+        apikey: v.apikey,
+        models: v.models,
+        timeout: (Number(v.timeout) || 60) * 1e9,
+      });
+      const r = await saveConfig(cfg);
+      if (!r.ok) return {error: r.error};
+      renderConfig();
+    },
+  });
+}
+
+function editUpstream(cfg, u) {
+  openModal({
+    title: '编辑上游: ' + u.name,
+    fields: [
+      {key:'name', label:'name', type:'text', readonly:true, value:u.name},
+      {key:'url', label:'url', type:'text', value:u.url},
+      {key:'apikey', label:'apikey', type:'secret', value:u.apikey},
+      {key:'models', label:'models（每行一个）', type:'list', value: u.models || []},
+      {key:'timeout', label:'timeout（秒）', type:'text', value: String((u.timeout || 6e10) / 1e9)},
+    ],
+    onSubmit: async (v) => {
+      u.url = v.url.trim();
+      if (v.apikey.reset) u.apikey = v.apikey.value;  // 未重置则不改（保留脱敏占位→后端保留原值）
+      u.models = v.models;
+      u.timeout = (Number(v.timeout) || 60) * 1e9;
+      const r = await saveConfig(cfg);
+      if (!r.ok) return {error: r.error};
+      renderConfig();
+    },
+  });
+}
+
+function delUpstream(cfg, name) {
+  confirmModal('删除上游「' + name + '」?', async () => {
+    cfg.upstreams = cfg.upstreams.filter(u => u.name !== name);
+    const r = await saveConfig(cfg);
+    if (!r.ok) return {error: r.error};
+    renderConfig();
+  });
+}
 function addProject(cfg){ const name=prompt('name'); if(!name)return; const key=prompt('private key（可先用生成按钮）'); const lvl=prompt('log_level','off'); cfg.projects.push({name,log_level:lvl,model_map:{}}); cfg.server.private_keys[key]=name; pendingRestart=true; render(); saveConfig(cfg); }
 function editProject(cfg,p){ const lvl=prompt('log_level',p.log_level); if(lvl)p.log_level=lvl; pendingRestart=true; render(); saveConfig(cfg); }
 async function delProject(cfg,name){ if(!confirm('删除 '+name))return; cfg.projects=cfg.projects.filter(p=>p.name!==name); for(const[k,v]of Object.entries(cfg.server.private_keys))if(v===name)delete cfg.server.private_keys[k]; saveConfig(cfg); }
