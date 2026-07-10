@@ -1,6 +1,15 @@
 const app = document.getElementById('app');
 let pendingRestart = false;
 
+// project log_level 选项。含 info：validate.go 接受 off/meta/info/debug，
+// 且 NewSnapshot 将 meta→info 映射后回写，GET 可能返回 info，故需列出以防数据丢失。
+const LOG_LEVELS = [
+  {value:'off', label:'off'},
+  {value:'meta', label:'meta'},
+  {value:'info', label:'info'},
+  {value:'debug', label:'debug'},
+];
+
 async function api(path, opts={}) {
   const r = await fetch(path, {headers:{'content-type':'application/json'}, ...opts});
   if (r.status === 401) { location.hash='#login'; throw new Error('未登录'); }
@@ -417,9 +426,59 @@ function delUpstream(cfg, name) {
     renderConfig();
   });
 }
-function addProject(cfg){ const name=prompt('name'); if(!name)return; const key=prompt('private key（可先用生成按钮）'); const lvl=prompt('log_level','off'); cfg.projects.push({name,log_level:lvl,model_map:{}}); cfg.server.private_keys[key]=name; pendingRestart=true; render(); saveConfig(cfg); }
-function editProject(cfg,p){ const lvl=prompt('log_level',p.log_level); if(lvl)p.log_level=lvl; pendingRestart=true; render(); saveConfig(cfg); }
-async function delProject(cfg,name){ if(!confirm('删除 '+name))return; cfg.projects=cfg.projects.filter(p=>p.name!==name); for(const[k,v]of Object.entries(cfg.server.private_keys))if(v===name)delete cfg.server.private_keys[k]; saveConfig(cfg); }
+function addProject(cfg) {
+  openModal({
+    title: '添加项目',
+    fields: [
+      {key:'name', label:'name', type:'text', required:true},
+      {key:'key', label:'private key', type:'password', required:true, placeholder:'sk-cp-...（可点生成）', actions:[
+        {label:'生成', onClick: async (set) => {
+          const {ok, data} = await api('/api/keys/gen', {method:'POST'});
+          if (ok) set(data.key);
+        }},
+      ]},
+      {key:'log_level', label:'log_level', type:'select', options:LOG_LEVELS, value:'off', hintFor: lvl => lvl === 'debug' ? '会记录完整请求/响应体到请求日志库' : null},
+      {key:'allow_direct_access', label:'允许直连（allow_direct_access）', type:'checkbox', value:false},
+    ],
+    onSubmit: async (v) => {
+      cfg.projects.push({name: v.name.trim(), log_level: v.log_level, model_map:{}});
+      cfg.server.private_keys[v.key] = v.name.trim();
+      pendingRestart = true;
+      const r = await saveConfig(cfg);
+      if (!r.ok) return {error: r.error};
+      render();
+    },
+  });
+}
+
+function editProject(cfg, p) {
+  openModal({
+    title: '编辑项目: ' + p.name,
+    fields: [
+      {key:'name', label:'name', type:'text', readonly:true, value:p.name},
+      {key:'log_level', label:'log_level', type:'select', options:LOG_LEVELS, value: p.log_level || 'off', hintFor: lvl => lvl === 'debug' ? '会记录完整请求/响应体到请求日志库' : null},
+      {key:'allow_direct_access', label:'允许直连（allow_direct_access）', type:'checkbox', value: p.allow_direct_access || false},
+    ],
+    onSubmit: async (v) => {
+      if (p.log_level !== v.log_level) pendingRestart = true;
+      p.log_level = v.log_level;
+      p.allow_direct_access = v.allow_direct_access;
+      const r = await saveConfig(cfg);
+      if (!r.ok) return {error: r.error};
+      render();
+    },
+  });
+}
+
+function delProject(cfg, name) {
+  confirmModal('删除项目「' + name + '」?', async () => {
+    cfg.projects = cfg.projects.filter(p => p.name !== name);
+    for (const [k, v] of Object.entries(cfg.server.private_keys)) if (v === name) delete cfg.server.private_keys[k];
+    const r = await saveConfig(cfg);
+    if (!r.ok) return {error: r.error};
+    renderConfig();
+  });
+}
 function addMapping(cfg,proj){ const m=prompt('请求模型名'); if(!m)return; const t=prompt('upstream/model（逗号分隔多个为主备）').split(','); const p=cfg.projects.find(x=>x.name===proj); p.model_map[m]=t; saveConfig(cfg); }
 function delMapping(cfg,proj,m){ const p=cfg.projects.find(x=>x.name===proj); delete p.model_map[m]; saveConfig(cfg); }
 
