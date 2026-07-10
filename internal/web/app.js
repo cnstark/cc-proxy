@@ -130,11 +130,148 @@ function renderMappings(cfg) {
   return el('div', {class:'card'}, [el('h3',{},'模型映射'), projSel, box]);
 }
 
+// saveConfig 整份 PUT 配置。成功不自动重渲染（由调用方决定 renderConfig/render）；
+// 失败返回 {error} 供弹窗内展示，替换原 alert('保存失败')。
 async function saveConfig(cfg) {
-  const {ok,data} = await api('/api/config',{method:'PUT',body:JSON.stringify(cfg)});
-  if (ok) { renderConfig(); }
-  else alert('保存失败: '+(data.error||''));
+  const {ok, data} = await api('/api/config',{method:'PUT',body:JSON.stringify(cfg)});
+  if (ok) return {ok:true};
+  return {ok:false, error: data.error || '保存失败'};
 }
+let currentModal = null;
+
+// openModal 弹窗工厂。
+// opts: {title, fields:[{key,label,type,...opts}], onSubmit, submitLabel}
+// - fields 各项的 type 决定渲染方式（见 renderField）；getValue 收集提交值。
+// - onSubmit(values) 可为 async；返回 undefined=成功关闭弹窗，返回 {error}=失败，弹窗内展示不关闭。
+// - 基础校验（required 的 text/password 非空、list 至少一项）由本函数在调 onSubmit 前统一做；
+//   业务校验（引用存在性等）由后端 config.Validate 兜底（422），前端不重复实现。
+// - 取消：Esc / 点 overlay 遮罩 / 取消按钮 → 直接关闭，无副作用（未 PUT）。
+// - 同一时刻仅一个弹窗：已有弹窗时再调直接忽略。
+function openModal(opts) {
+  if (currentModal) return;
+  const overlay = el('div', {class:'overlay'});
+  const card = el('div', {class:'modal'});
+  card.appendChild(el('h3', {}, opts.title));
+  const errBox = el('div', {class:'modal-error'});
+  const collectors = {};
+  for (const f of opts.fields) {
+    const {node, getValue} = renderField(f);
+    collectors[f.key] = getValue;
+    card.appendChild(node);
+  }
+  card.appendChild(errBox);
+  card.appendChild(el('div', {class:'modal-actions'}, [
+    el('button', {class:'ghost', onclick: close}, '取消'),
+    el('button', {onclick: submit}, opts.submitLabel || '保存'),
+  ]));
+  overlay.appendChild(card);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  document.addEventListener('keydown', onKey);
+  function close() {
+    overlay.remove();
+    currentModal = null;
+    document.removeEventListener('keydown', onKey);
+  }
+  function showError(msg) { errBox.textContent = msg; }
+  async function submit() {
+    const values = {};
+    for (const k in collectors) values[k] = collectors[k]();
+    for (const f of opts.fields) {
+      if (!f.required) continue;
+      const v = values[f.key];
+      if (f.type === 'list' && (!Array.isArray(v) || v.length === 0)) return showError((f.label || f.key) + '不能为空');
+      if ((f.type === 'text' || f.type === 'password') && !String(v).trim()) return showError((f.label || f.key) + '不能为空');
+    }
+    const res = await opts.onSubmit(values);
+    if (res && res.error) return showError(res.error);
+    close();
+  }
+  document.body.appendChild(overlay);
+  currentModal = overlay;
+}
+
+// confirmModal 删除确认弹窗。onConfirm 返回 undefined=关闭 / {error}=弹窗内展示。
+function confirmModal(title, onConfirm) {
+  openModal({
+    title,
+    fields: [],
+    submitLabel: '确认删除',
+    onSubmit: onConfirm,
+  });
+}
+
+// renderField 按声明渲染单个字段，返回 {node, getValue}。
+// 支持类型：text / password / checkbox / select / list / secret / ordered-list。
+function renderField(f) {
+  const wrap = el('div', {class:'field'}, [el('label', {}, f.label)]);
+
+  if (f.type === 'text' || f.type === 'password') {
+    const inp = el('input', {type: f.type, value: f.value || '', placeholder: f.placeholder || ''});
+    if (f.readonly) inp.setAttribute('readonly', '');
+    const row = el('div', {class:'field-row'}, [inp]);
+    (f.actions || []).forEach(a => row.appendChild(el('button', {class:'ghost', onclick: () => a.onClick(v => { inp.value = v; })}, a.label)));
+    wrap.appendChild(row);
+    return {node: wrap, getValue: () => inp.value};
+  }
+
+  if (f.type === 'checkbox') {
+    const inp = el('input', {type:'checkbox'});
+    inp.checked = !!f.value;
+    wrap.appendChild(inp);
+    return {node: wrap, getValue: () => inp.checked};
+  }
+
+  if (f.type === 'select') {
+    const sel = el('select', {});
+    for (const o of f.options) sel.appendChild(el('option', {value:o.value}, o.label));
+    // 防止数据丢失：当前值不在 options 中时追加（如历史配置含 info）
+    if (f.value && !f.options.some(o => o.value === f.value)) {
+      sel.appendChild(el('option', {value:f.value}, f.value));
+    }
+    sel.value = f.value || (f.options[0] && f.options[0].value) || '';
+    let hintEl = null;
+    function refreshHint() {
+      const txt = f.hintFor ? f.hintFor(sel.value) : (f.hint || null);
+      if (txt) {
+        if (!hintEl) { hintEl = el('div', {class:'field-hint'}); wrap.appendChild(hintEl); }
+        hintEl.textContent = txt;
+      } else if (hintEl) { hintEl.remove(); hintEl = null; }
+    }
+    sel.addEventListener('change', refreshHint);
+    wrap.appendChild(sel);
+    refreshHint();
+    return {node: wrap, getValue: () => sel.value};
+  }
+
+  if (f.type === 'list') return renderListField(f, wrap);
+  if (f.type === 'secret') return renderSecretField(f, wrap);
+  if (f.type === 'ordered-list') return renderOrderedListField(f, wrap);
+
+  return {node: wrap, getValue: () => undefined};
+}
+
+// renderListField 可增删多行文本（如 models 数组）。getValue 返回去空、trim 后的 string[]。
+function renderListField(f, wrap) {
+  const items = Array.isArray(f.value) ? f.value.slice() : [];
+  const rows = el('div', {});
+  function draw() {
+    rows.innerHTML = '';
+    items.forEach((val, i) => {
+      const inp = el('input', {type:'text', value: val});
+      inp.addEventListener('input', () => { items[i] = inp.value; });
+      rows.appendChild(el('div', {class:'field-row'}, [
+        inp,
+        el('button', {class:'ghost', onclick: () => { items.splice(i, 1); draw(); }}, '删除'),
+      ]));
+    });
+  }
+  draw();
+  wrap.appendChild(rows);
+  wrap.appendChild(el('button', {class:'ghost', onclick: () => { items.push(''); draw(); }}, '添加'));
+  return {node: wrap, getValue: () => items.map(s => s.trim()).filter(Boolean)};
+}
+
 function addUpstream(cfg){ const name=prompt('name'); if(!name)return; const url=prompt('url'); const ak=prompt('apikey'); const ms=prompt('models 逗号分隔').split(','); cfg.upstreams.push({name,url,apikey:ak,models:ms,timeout:60000000000}); saveConfig(cfg); }
 function editUpstream(cfg,u){ const url=prompt('url',u.url); if(url!=null)u.url=url; const ak=prompt('apikey（留空保留）',''); if(ak)u.apikey=ak; saveConfig(cfg); }
 async function delUpstream(cfg,name){ if(!confirm('删除 '+name))return; cfg.upstreams=cfg.upstreams.filter(u=>u.name!==name); saveConfig(cfg); }
