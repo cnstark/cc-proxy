@@ -383,15 +383,10 @@ function addUpstream(cfg) {
       {key:'timeout', label:'timeout（秒）', type:'text', value:'60', placeholder:'60'},
     ],
     onSubmit: async (v) => {
-      cfg.upstreams.push({
-        name: v.name.trim(),
-        url: v.url.trim(),
-        apikey: v.apikey,
-        models: v.models,
-        timeout: (Number(v.timeout) || 60) * 1e9,
-      });
+      const newUp = {name: v.name.trim(), url: v.url.trim(), apikey: v.apikey, models: v.models, timeout: (Number(v.timeout) || 60) * 1e9};
+      cfg.upstreams.push(newUp);
       const r = await saveConfig(cfg);
-      if (!r.ok) return {error: r.error};
+      if (!r.ok) { cfg.upstreams.pop(); return {error: r.error}; }
       renderConfig();
     },
   });
@@ -408,6 +403,7 @@ function editUpstream(cfg, u) {
       {key:'timeout', label:'timeout（秒）', type:'text', value: String((u.timeout || 6e10) / 1e9)},
     ],
     onSubmit: async (v) => {
+      if (v.apikey.reset && !v.apikey.value.trim()) return {error: 'apikey 不能为空'};
       u.url = v.url.trim();
       if (v.apikey.reset) u.apikey = v.apikey.value;  // 未重置则不改（保留脱敏占位→后端保留原值）
       u.models = v.models;
@@ -442,11 +438,12 @@ function addProject(cfg) {
       {key:'allow_direct_access', label:'允许直连（allow_direct_access）', type:'checkbox', value:false},
     ],
     onSubmit: async (v) => {
-      cfg.projects.push({name: v.name.trim(), log_level: v.log_level, model_map:{}});
-      cfg.server.private_keys[v.key] = v.name.trim();
+      const newName = v.name.trim();
+      cfg.projects.push({name: newName, log_level: v.log_level, model_map:{}});
+      cfg.server.private_keys[v.key] = newName;
       pendingRestart = true;
       const r = await saveConfig(cfg);
-      if (!r.ok) return {error: r.error};
+      if (!r.ok) { cfg.projects.pop(); delete cfg.server.private_keys[v.key]; return {error: r.error}; }
       render();
     },
   });
