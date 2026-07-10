@@ -341,7 +341,7 @@ function renderOrderedListField(f, wrap) {
         else it.model = '';
       }
       fillModels();
-      upSel.addEventListener('change', () => { it.upstream = upSel.value; it.model = ''; fillModels(); });
+      upSel.addEventListener('change', () => { it.upstream = upSel.value; fillModels(); });
       modelSel.addEventListener('change', () => { it.model = modelSel.value; });
       rows.appendChild(el('div', {class:'field-row'}, [
         upSel, modelSel,
