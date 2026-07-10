@@ -160,10 +160,12 @@ function openModal(opts) {
     card.appendChild(node);
   }
   card.appendChild(errBox);
+  const submitBtn = el('button', {}, opts.submitLabel || '保存');
   card.appendChild(el('div', {class:'modal-actions'}, [
     el('button', {class:'ghost', onclick: close}, '取消'),
-    el('button', {onclick: submit}, opts.submitLabel || '保存'),
+    submitBtn,
   ]));
+  submitBtn.onclick = submit;
   overlay.appendChild(card);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   function onKey(e) { if (e.key === 'Escape') close(); }
@@ -175,6 +177,7 @@ function openModal(opts) {
   }
   function showError(msg) { errBox.textContent = msg; }
   async function submit() {
+    if (submitBtn.disabled) return;
     const values = {};
     for (const k in collectors) values[k] = collectors[k]();
     for (const f of opts.fields) {
@@ -183,8 +186,18 @@ function openModal(opts) {
       if (f.type === 'list' && (!Array.isArray(v) || v.length === 0)) return showError((f.label || f.key) + '不能为空');
       if ((f.type === 'text' || f.type === 'password') && !String(v).trim()) return showError((f.label || f.key) + '不能为空');
     }
-    const res = await opts.onSubmit(values);
-    if (res && res.error) return showError(res.error);
+    submitBtn.disabled = true;
+    let res;
+    try {
+      res = await opts.onSubmit(values);
+    } catch (e) {
+      submitBtn.disabled = false;
+      return showError(e && e.message ? e.message : '操作失败');
+    }
+    if (res && res.error) {
+      submitBtn.disabled = false;
+      return showError(res.error);
+    }
     close();
   }
   document.body.appendChild(overlay);
