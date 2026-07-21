@@ -1332,3 +1332,48 @@ func TestHandler_Forwarded_LogsRealModel(t *testing.T) {
 		t.Fatalf("日志应含真实模型名 real_model=real-opus:\n%s", forwardedLine)
 	}
 }
+
+// TestHandler_ForcedProbe_LogsUpstreamErrorDetail 验证兜底探测(全部退避)失败时,
+// INFO 级同样补打上游错误详情。
+func TestHandler_ForcedProbe_LogsUpstreamErrorDetail(t *testing.T) {
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(500)
+		w.Write([]byte(`{"type":"error","error":{"type":"server_error","message":"boom"}}`))
+	}))
+	defer ts1.Close()
+
+	var buf bytes.Buffer
+	breaker := circuitbreaker.NewBreaker()
+	h := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second, RetryBackoff: []time.Duration{30 * time.Second}}}},
+		forwarder: NewStreamingForwarder(),
+		log:       captureLogger(&buf),
+		breaker:   breaker,
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	req.Header.Set("content-type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 502 {
+		t.Fatalf("expected 502 (all failed), got %d", rec.Code)
+	}
+	logOut := buf.String()
+	var detailLine string
+	for _, line := range strings.Split(logOut, "\n") {
+		if strings.Contains(line, "upstream error response") && !strings.Contains(line, "non-retryable") {
+			detailLine = line
+			break
+		}
+	}
+	if detailLine == "" {
+		t.Fatalf("未找到 upstream error response 详情日志行(兜底探测路径):\n%s", logOut)
+	}
+	if !strings.Contains(detailLine, "status_code=500") || !strings.Contains(detailLine, "boom") {
+		t.Fatalf("expected status_code=500 与 body 含 boom:\n%s", detailLine)
+	}
+}

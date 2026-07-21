@@ -327,6 +327,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				reqErrStr = "upstream failed after response started"
 				return
 			}
+			logUpstreamErrorDetail(h.log, r.Context(), target.Upstream, fwdErr)
 			if msg := h.breaker.RecordFailure(target.Upstream, cfg.RetryBackoff); msg != "" {
 				h.log.InfoContext(r.Context(), msg)
 			}
