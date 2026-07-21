@@ -34,6 +34,18 @@ func (e *ResponseStartedError) Error() string {
 
 func (e *ResponseStartedError) Unwrap() error { return e.Err }
 
+// UpstreamError 表示上游返回了非 2xx 响应。
+// Body 为上游错误响应体(完整),由调用方在打印时截断。
+// 仅用于 5xx/429 可重试路径——4xx 透传后 return nil 不上抛。
+type UpstreamError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *UpstreamError) Error() string {
+	return fmt.Sprintf("上游返回非2xx: status=%d", e.StatusCode)
+}
+
 // Forward 发起上游请求并流式透传响应。
 // c 非 nil 时把响应流旁路 Tee 给 usage 收集器；c 为 nil 时零开销直传。
 // 不变量：响应已开始后（WriteHeader/首字节后）的失败包装为 ResponseStartedError，
@@ -93,7 +105,7 @@ func (f *StreamingForwarder) Forward(cfg config.Upstream, body []byte, headers h
 
 		// 可重试：5xx 或 429，不向客户端写任何响应，直接返回错误让 handler 转移
 		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
-			return fmt.Errorf("上游返回可重试错误: status=%d", resp.StatusCode)
+			return &UpstreamError{StatusCode: resp.StatusCode, Body: errBody}
 		}
 
 		// 不可重试：其他 4xx，直接透传响应

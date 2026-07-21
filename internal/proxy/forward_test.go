@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"github.com/cnstark/cc-proxy/internal/auth"
 	"github.com/cnstark/cc-proxy/internal/config"
 	"github.com/cnstark/cc-proxy/internal/logging"
@@ -489,5 +490,33 @@ func TestFailover_FirstReturns401_NoFailover(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "authentication_error") {
 		t.Fatal("expected 401 error body to be passed through")
+	}
+}
+
+// TestForward_5xxReturnsUpstreamError 验证上游返回 5xx 时 Forward 返回 *UpstreamError
+// 且携带 status code 与错误响应体(供 handler INFO 级补打详情)。
+func TestForward_5xxReturnsUpstreamError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(503)
+		w.Write([]byte(`{"type":"error","error":{"type":"overloaded","message":"service unavailable"}}`))
+	}))
+	defer ts.Close()
+
+	cfg := config.Upstream{Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}
+	fwd := NewStreamingForwarder()
+	w := httptest.NewRecorder()
+	err := fwd.Forward(cfg, []byte(`{}`), http.Header{}, w, nil, nil)
+
+	var upErr *UpstreamError
+	if !errors.As(err, &upErr) {
+		t.Fatalf("expected *UpstreamError, got %T: %v", err, err)
+	}
+	if upErr.StatusCode != 503 {
+		t.Fatalf("expected StatusCode 503, got %d", upErr.StatusCode)
+	}
+	wantBody := `{"type":"error","error":{"type":"overloaded","message":"service unavailable"}}`
+	if string(upErr.Body) != wantBody {
+		t.Fatalf("expected body to be captured, got: %s", string(upErr.Body))
 	}
 }
