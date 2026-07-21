@@ -1225,3 +1225,54 @@ type errorForwarder struct {
 func (f *errorForwarder) Forward(cfg config.Upstream, body []byte, headers http.Header, w http.ResponseWriter, c *usage.Collector, log *slog.Logger) error {
 	return f.err
 }
+
+// TestHandler_Forwarded_LogsRealModel 验证成功转发日志包含 real_model 字段，
+// 其值为路由解析后的真实上游模型名（与别名 model 不同）。
+func TestHandler_Forwarded_LogsRealModel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("content-type", "text/event-stream")
+		w.WriteHeader(200)
+		w.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n"))
+		flusher.Flush()
+		w.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":5}}\n\n"))
+		flusher.Flush()
+	}))
+	defer ts.Close()
+
+	var buf bytes.Buffer
+	h := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"alias-opus": {"cfg1/real-opus"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"real-opus"}, Timeout: 5 * time.Second}}},
+		forwarder: NewStreamingForwarder(),
+		log:       captureLogger(&buf),
+		usageEnabled: false,
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"alias-opus"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	req.Header.Set("content-type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var forwardedLine string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "request forwarded") {
+			forwardedLine = line
+			break
+		}
+	}
+	if forwardedLine == "" {
+		t.Fatalf("未找到 request forwarded 日志行:\n%s", buf.String())
+	}
+	if !strings.Contains(forwardedLine, "model=alias-opus") {
+		t.Fatalf("日志应含别名 model=alias-opus:\n%s", forwardedLine)
+	}
+	if !strings.Contains(forwardedLine, "real_model=real-opus") {
+		t.Fatalf("日志应含真实模型名 real_model=real-opus:\n%s", forwardedLine)
+	}
+}
