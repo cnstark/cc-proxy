@@ -1226,7 +1226,62 @@ func (f *errorForwarder) Forward(cfg config.Upstream, body []byte, headers http.
 	return f.err
 }
 
-// TestHandler_Forwarded_LogsRealModel 验证成功转发日志包含 real_model 字段，
+// TestHandler_5xxFailover_LogsUpstreamErrorDetail 验证上游 5xx 转移时,
+// INFO 级补打一条 upstream error response 日志,含 status_code 与 body_head。
+func TestHandler_5xxFailover_LogsUpstreamErrorDetail(t *testing.T) {
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"status":"ok from backup"}`))
+	}))
+	defer ts2.Close()
+
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(503)
+		w.Write([]byte(`{"type":"error","error":{"type":"overloaded","message":"service unavailable"}}`))
+	}))
+	defer ts1.Close()
+
+	var buf bytes.Buffer
+	h := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}, "cfg2": {Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}}},
+		forwarder: NewStreamingForwarder(),
+		log:       captureLogger(&buf),
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	req.Header.Set("content-type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200 after failover, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	logOut := buf.String()
+	var detailLine string
+	for _, line := range strings.Split(logOut, "\n") {
+		if strings.Contains(line, "upstream error response") && !strings.Contains(line, "non-retryable") {
+			detailLine = line
+			break
+		}
+	}
+	if detailLine == "" {
+		t.Fatalf("未找到 upstream error response 详情日志行:\n%s", logOut)
+	}
+	if !strings.Contains(detailLine, "status_code=503") {
+		t.Fatalf("expected status_code=503 in detail line:\n%s", detailLine)
+	}
+	if !strings.Contains(detailLine, "body_head=") || !strings.Contains(detailLine, "overloaded") {
+		t.Fatalf("expected body_head with error content in detail line:\n%s", detailLine)
+	}
+	if !strings.Contains(detailLine, "upstream=cfg1") {
+		t.Fatalf("expected upstream=cfg1 in detail line:\n%s", detailLine)
+	}
+}
 // 其值为路由解析后的真实上游模型名（与别名 model 不同）。
 func TestHandler_Forwarded_LogsRealModel(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

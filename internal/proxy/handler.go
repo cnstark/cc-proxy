@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -275,6 +276,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"upstream", target.Upstream,
 			"error", fwdErr.Error(),
 		)
+		logUpstreamErrorDetail(h.log, r.Context(), target.Upstream, fwdErr)
 
 		// 记录失败（可重试错误）
 		if h.breaker != nil {
@@ -337,6 +339,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 	reqErrStr = "all upstreams failed"
 	writeError(w, http.StatusBadGateway, "upstream_error", "所有上游均不可用")
+}
+
+// logUpstreamErrorDetail 在故障转移失败分支补打上游错误详情(INFO 级)。
+// 仅当 err 是 *UpstreamError(可重试路径)时打印 status_code + body_head;
+// 连接失败等非 UpstreamError 跳过(其原因已在 "upstream failed, trying next" 的 error 字段中)。
+func logUpstreamErrorDetail(log *slog.Logger, ctx context.Context, upstream string, err error) {
+	var upErr *UpstreamError
+	if !errors.As(err, &upErr) {
+		return
+	}
+	log.InfoContext(ctx, "upstream error response",
+		"upstream", upstream,
+		"status_code", upErr.StatusCode,
+		"body_head", truncStr(string(upErr.Body), 1024),
+	)
 }
 
 // rewriteRequestBody 替换 JSON 请求体中的 model 字段。
