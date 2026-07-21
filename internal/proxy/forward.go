@@ -109,6 +109,14 @@ func (f *StreamingForwarder) Forward(cfg config.Upstream, body []byte, headers h
 		}
 
 		// 不可重试：其他 4xx，直接透传响应
+		// 因 return nil 不走 handler 失败分支,在此就地 INFO 打印详情(连接阶段失败不涉及)
+		if log != nil {
+			log.InfoContext(context.Background(), "upstream error response (non-retryable)",
+				"upstream", cfg.Name,
+				"status_code", resp.StatusCode,
+				"body_head", truncStr(string(errBody), 1024),
+			)
+		}
 		// 透传响应头
 		for k, vs := range resp.Header {
 			for _, v := range vs {

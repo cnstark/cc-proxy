@@ -9,6 +9,7 @@ import (
 	"github.com/cnstark/cc-proxy/internal/logging"
 	"github.com/cnstark/cc-proxy/internal/usage"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -518,5 +519,54 @@ func TestForward_5xxReturnsUpstreamError(t *testing.T) {
 	wantBody := `{"type":"error","error":{"type":"overloaded","message":"service unavailable"}}`
 	if string(upErr.Body) != wantBody {
 		t.Fatalf("expected body to be captured, got: %s", string(upErr.Body))
+	}
+}
+
+// TestForward_4xxPassthrough_LogsInfo 验证 4xx 透传时:
+// 1) 响应正确透传给客户端(状态码 + body); 2) INFO 级打印 upstream error response (non-retryable)。
+func TestForward_4xxPassthrough_LogsInfo(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(401)
+		w.Write([]byte(`{"type":"error","error":{"type":"authentication_error","message":"invalid api key"}}`))
+	}))
+	defer ts.Close()
+
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	cfg := config.Upstream{Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}
+	fwd := NewStreamingForwarder()
+	w := httptest.NewRecorder()
+	err := fwd.Forward(cfg, []byte(`{}`), http.Header{}, w, nil, log)
+	if err != nil {
+		t.Fatalf("expected nil error on 4xx passthrough, got %v", err)
+	}
+	if w.Code != 401 {
+		t.Fatalf("expected 401 passed through, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "authentication_error") {
+		t.Fatalf("expected 4xx body passed through, got: %s", w.Body.String())
+	}
+
+	logOut := buf.String()
+	var detailLine string
+	for _, line := range strings.Split(logOut, "\n") {
+		if strings.Contains(line, "upstream error response (non-retryable)") {
+			detailLine = line
+			break
+		}
+	}
+	if detailLine == "" {
+		t.Fatalf("未找到 upstream error response (non-retryable) 日志行:\n%s", logOut)
+	}
+	if !strings.Contains(detailLine, "status_code=401") {
+		t.Fatalf("expected status_code=401 in detail line:\n%s", detailLine)
+	}
+	if !strings.Contains(detailLine, "upstream=cfg1") {
+		t.Fatalf("expected upstream=cfg1 in detail line:\n%s", detailLine)
+	}
+	if !strings.Contains(detailLine, "authentication_error") {
+		t.Fatalf("expected body_head with error content:\n%s", detailLine)
 	}
 }
