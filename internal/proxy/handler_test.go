@@ -1282,6 +1282,7 @@ func TestHandler_5xxFailover_LogsUpstreamErrorDetail(t *testing.T) {
 		t.Fatalf("expected upstream=cfg1 in detail line:\n%s", detailLine)
 	}
 }
+// TestHandler_Forwarded_LogsRealModel 验证成功转发日志包含 real_model 字段，
 // 其值为路由解析后的真实上游模型名（与别名 model 不同）。
 func TestHandler_Forwarded_LogsRealModel(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
