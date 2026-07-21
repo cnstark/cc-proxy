@@ -1334,7 +1334,8 @@ func TestHandler_Forwarded_LogsRealModel(t *testing.T) {
 }
 
 // TestHandler_ForcedProbe_LogsUpstreamErrorDetail 验证兜底探测(全部退避)失败时,
-// INFO 级同样补打上游错误详情。
+// INFO 级补打上游错误详情。通过先发 2 次请求让上游进入退避,
+// 第 3 次请求触发兜底分支,确认其失败路径的 helper 生效。
 func TestHandler_ForcedProbe_LogsUpstreamErrorDetail(t *testing.T) {
 	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
@@ -1345,14 +1346,35 @@ func TestHandler_ForcedProbe_LogsUpstreamErrorDetail(t *testing.T) {
 
 	var buf bytes.Buffer
 	breaker := circuitbreaker.NewBreaker()
+	cfg1 := config.Upstream{
+		Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"},
+		Timeout: 5 * time.Second, RetryBackoff: []time.Duration{10 * time.Minute},
+	}
 	h := &Handler{
 		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
 		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
-		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second, RetryBackoff: []time.Duration{30 * time.Second}}}},
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": cfg1}},
 		forwarder: NewStreamingForwarder(),
 		log:       captureLogger(&buf),
 		breaker:   breaker,
 	}
+
+	// 请求 1、2：各返回 502(单 upstream 全失败),累积 2 次失败让 cfg1 进入退避。
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+		req.Header.Set("x-api-key", "sk-cp-key1")
+		req.Header.Set("content-type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 502 {
+			t.Fatalf("请求 %d: 预期 502(单 upstream 全失败), 实际 %d", i+1, rec.Code)
+		}
+	}
+
+	// 清空前两次请求的日志,仅观察第 3 次请求。
+	buf.Reset()
+
+	// 请求 3：cfg1 在退避期,主循环 IsAvailable=false → skip → allSkipped → 兜底探测强制重试 cfg1 → 仍 500 → 兜底分支失败路径 helper 打印 upstream error response。
 	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
 	req.Header.Set("x-api-key", "sk-cp-key1")
 	req.Header.Set("content-type", "application/json")
@@ -1360,8 +1382,9 @@ func TestHandler_ForcedProbe_LogsUpstreamErrorDetail(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	if rec.Code != 502 {
-		t.Fatalf("expected 502 (all failed), got %d", rec.Code)
+		t.Fatalf("预期 502(兜底探测也失败), 实际 %d: %s", rec.Code, rec.Body.String())
 	}
+
 	logOut := buf.String()
 	var detailLine string
 	for _, line := range strings.Split(logOut, "\n") {
@@ -1373,7 +1396,8 @@ func TestHandler_ForcedProbe_LogsUpstreamErrorDetail(t *testing.T) {
 	if detailLine == "" {
 		t.Fatalf("未找到 upstream error response 详情日志行(兜底探测路径):\n%s", logOut)
 	}
-	if !strings.Contains(detailLine, "status_code=500") || !strings.Contains(detailLine, "boom") {
-		t.Fatalf("expected status_code=500 与 body 含 boom:\n%s", detailLine)
+	if !strings.Contains(detailLine, "status_code=500") || !strings.Contains(detailLine, "boom") || !strings.Contains(detailLine, "upstream=cfg1") {
+		t.Fatalf("预期 status_code=500 与 body 含 boom 且 upstream=cfg1:\n%s", detailLine)
 	}
 }
+
