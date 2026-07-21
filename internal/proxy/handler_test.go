@@ -1282,6 +1282,7 @@ func TestHandler_5xxFailover_LogsUpstreamErrorDetail(t *testing.T) {
 		t.Fatalf("expected upstream=cfg1 in detail line:\n%s", detailLine)
 	}
 }
+
 // TestHandler_Forwarded_LogsRealModel 验证成功转发日志包含 real_model 字段，
 // 其值为路由解析后的真实上游模型名（与别名 model 不同）。
 func TestHandler_Forwarded_LogsRealModel(t *testing.T) {
@@ -1401,3 +1402,98 @@ func TestHandler_ForcedProbe_LogsUpstreamErrorDetail(t *testing.T) {
 	}
 }
 
+// TestHandler_AllUpstreams5xx_LogsDetailForEach 验证全部上游都返回 5xx 时,
+// 每个上游都单独打了 upstream error response 详情 INFO 日志,最后 all upstreams failed.
+func TestHandler_AllUpstreams5xx_LogsDetailForEach(t *testing.T) {
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error":"boom1"}`))
+	}))
+	defer ts1.Close()
+
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error":"boom2"}`))
+	}))
+	defer ts2.Close()
+
+	var buf bytes.Buffer
+	h := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1", "cfg2/m2"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts1.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}, "cfg2": {Name: "cfg2", URL: ts2.URL, APIKey: "k2", Models: []string{"m2"}, Timeout: 5 * time.Second}}},
+		forwarder: NewStreamingForwarder(),
+		log:       captureLogger(&buf),
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	req.Header.Set("content-type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 502 {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	logOut := buf.String()
+
+	// 断言 1：至少两条 upstream error response（每个上游一条）
+	count := strings.Count(logOut, "upstream error response")
+	if count < 2 {
+		t.Fatalf("expected at least 2 upstream error response lines, got %d:\n%s", count, logOut)
+	}
+
+	// 断言 2：cfg1 和 cfg2 都出现在日志中
+	if !strings.Contains(logOut, "upstream=cfg1") {
+		t.Fatalf("expected upstream=cfg1 in log:\n%s", logOut)
+	}
+	if !strings.Contains(logOut, "upstream=cfg2") {
+		t.Fatalf("expected upstream=cfg2 in log:\n%s", logOut)
+	}
+
+	// 断言 3：最终包含 all upstreams failed
+	if !strings.Contains(logOut, "all upstreams failed") {
+		t.Fatalf("expected 'all upstreams failed' in log:\n%s", logOut)
+	}
+}
+
+// TestHandler_ConnectionFailure_NoUpstreamErrorDetail 验证连接失败(非 UpstreamError)时
+// 走 upstream failed, trying next 路径但不触发 upstream error response(因 errors.As 守卫)。
+func TestHandler_ConnectionFailure_NoUpstreamErrorDetail(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	ts.Close() // 立即关闭,使后续 client.Do 连接被拒
+
+	var buf bytes.Buffer
+	h := &Handler{
+		auth:      auth.NewStore(map[string]string{"sk-cp-key1": "p1"}),
+		resolver:  newAliasResolver(map[string]map[string][]string{"p1": {"m": {"cfg1/m1"}}}),
+		lookup:    &configLookup{upstreams: map[string]config.Upstream{"cfg1": {Name: "cfg1", URL: ts.URL, APIKey: "k1", Models: []string{"m1"}, Timeout: 5 * time.Second}}},
+		forwarder: NewStreamingForwarder(),
+		log:       captureLogger(&buf),
+	}
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("x-api-key", "sk-cp-key1")
+	req.Header.Set("content-type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 502 {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	logOut := buf.String()
+
+	// 断言 1：连接失败应走 upstream failed, trying next
+	if !strings.Contains(logOut, "upstream failed, trying next") {
+		t.Fatalf("expected 'upstream failed, trying next' in log:\n%s", logOut)
+	}
+
+	// 断言 2：连接失败 err 不是 *UpstreamError,不应触发 upstream error response
+	if strings.Contains(logOut, "upstream error response") {
+		t.Fatalf("unexpected 'upstream error response' in log (connection failure should skip it):\n%s", logOut)
+	}
+}
