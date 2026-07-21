@@ -249,7 +249,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		fwdErr := h.forwarder.Forward(cfg, rewrittenBody, reqHeaders, w, collector, h.log)
 		if fwdErr == nil {
-			attrs := append([]any{"model", requestModel, "upstream", target.Upstream}, tokenAttrs(collector)...)
+			attrs := append([]any{"model", requestModel, "upstream", target.Upstream, "real_model", target.Model}, tokenAttrs(collector)...)
 			h.log.InfoContext(r.Context(), "request forwarded", attrs...)
 			// 记录成功
 			if h.breaker != nil {
@@ -309,7 +309,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			fwdErr := h.forwarder.Forward(cfg, rewrittenBody, reqHeaders, w, collector, h.log)
 			if fwdErr == nil {
-				attrs := append([]any{"model", requestModel, "upstream", target.Upstream}, tokenAttrs(collector)...)
+				attrs := append([]any{"model", requestModel, "upstream", target.Upstream, "real_model", target.Model}, tokenAttrs(collector)...)
 				h.log.InfoContext(r.Context(), "forced probe succeeded", attrs...)
 				if msg := h.breaker.RecordSuccess(target.Upstream); msg != "" {
 					h.log.InfoContext(r.Context(), msg)
