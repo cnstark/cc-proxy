@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cnstark/cc-proxy/internal/config"
 	"github.com/cnstark/cc-proxy/internal/usage"
@@ -154,15 +155,22 @@ func (f *StreamingForwarder) Forward(cfg config.Upstream, body []byte, headers h
 	// 透传状态码 —— 此刻起响应已开始，后续任何失败都不可转移到下一个上游
 	w.WriteHeader(resp.StatusCode)
 
+	// 流式转发：跟踪距上次从上游读到数据的时间（idle），用于在客户端中途断开
+	// （broken pipe）时区分「上游长时间不吐数据 → 客户端放弃」与「客户端主动取消」。
+	streamStart := time.Now()
+	lastRead := streamStart
+
 	// 逐 chunk 流式转发
 	flusher, canFlush := w.(http.Flusher)
 	buf := make([]byte, 4096)
 	for {
 		n, readErr := resp.Body.Read(buf)
 		if n > 0 {
+			lastRead = time.Now()
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				// 响应已开始，不可转移
-				return &ResponseStartedError{Err: fmt.Errorf("向客户端写入失败: %w", writeErr)}
+				// 响应已开始，不可转移。附 idle/stream 时长便于诊断断开成因。
+				return &ResponseStartedError{Err: fmt.Errorf("向客户端写入失败 (stream=%s idle=%s): %w",
+					time.Since(streamStart).Round(time.Millisecond), time.Since(lastRead).Round(time.Millisecond), writeErr)}
 			}
 			if canFlush {
 				flusher.Flush()
@@ -176,7 +184,8 @@ func (f *StreamingForwarder) Forward(cfg config.Upstream, body []byte, headers h
 			break
 		}
 		if readErr != nil {
-			return &ResponseStartedError{Err: fmt.Errorf("读取上游响应失败: %w", readErr)}
+			return &ResponseStartedError{Err: fmt.Errorf("读取上游响应失败 (stream=%s idle=%s): %w",
+				time.Since(streamStart).Round(time.Millisecond), time.Since(lastRead).Round(time.Millisecond), readErr)}
 		}
 	}
 	return nil

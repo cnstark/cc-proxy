@@ -570,3 +570,72 @@ func TestForward_4xxPassthrough_LogsInfo(t *testing.T) {
 		t.Fatalf("expected body_head with error content:\n%s", detailLine)
 	}
 }
+
+// failOnSecondWriteWriter 是一个 http.ResponseWriter，第一次 Write 成功，
+// 第二次 Write 返回 error（模拟客户端在流式进行中关闭连接导致的 EPIPE）。
+// 必须实现 http.Flusher，否则 forward.go 的流式透传会失效。
+type failOnSecondWriteWriter struct {
+	header http.Header
+	code   int
+	writes int
+}
+
+func (w *failOnSecondWriteWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = http.Header{}
+	}
+	return w.header
+}
+
+func (w *failOnSecondWriteWriter) WriteHeader(code int) {
+	if w.code == 0 {
+		w.code = code
+	}
+}
+
+func (w *failOnSecondWriteWriter) Write(b []byte) (int, error) {
+	w.writes++
+	if w.writes >= 2 {
+		// 模拟写客户端失败（broken pipe）
+		return 0, errors.New("write: broken pipe")
+	}
+	return len(b), nil
+}
+
+func (w *failOnSecondWriteWriter) Flush() {}
+
+// TestForward_BrokenPipe_ReportsIdleAndStreamDuration 验证流式转发途中客户端
+// 写失败（broken pipe）时，返回的 ResponseStartedError 的错误信息里包含
+// 距上次从上游读到数据的 idle 时长 和 流总时长，便于区分"上游卡住"与"客户端主动取消"。
+func TestForward_BrokenPipe_ReportsIdleAndStreamDuration(t *testing.T) {
+	// 上游：先吐一个 chunk，短暂停顿后吐第二个 chunk（第二个会触发写失败）。
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("content-type", "text/event-stream")
+		w.WriteHeader(200)
+		w.Write([]byte("data: chunk0\n\n"))
+		flusher.Flush()
+		time.Sleep(50 * time.Millisecond) // 制造可观测的 idle 间隔
+		w.Write([]byte("data: chunk1\n\n"))
+		flusher.Flush()
+	}))
+	defer ts.Close()
+
+	cfg := config.Upstream{Name: "cfg1", URL: ts.URL, APIKey: "k", Models: []string{"m"}, Timeout: 5 * time.Second}
+	fwd := NewStreamingForwarder()
+	w := &failOnSecondWriteWriter{}
+
+	err := fwd.Forward(cfg, []byte(`{}`), http.Header{}, w, nil, nil)
+
+	var startedErr *ResponseStartedError
+	if !errors.As(err, &startedErr) {
+		t.Fatalf("expected *ResponseStartedError on broken pipe, got %T: %v", err, err)
+	}
+	msg := startedErr.Err.Error()
+	if !strings.Contains(msg, "idle") {
+		t.Fatalf("expected error message to contain idle duration, got: %s", msg)
+	}
+	if !strings.Contains(msg, "stream") {
+		t.Fatalf("expected error message to contain stream duration, got: %s", msg)
+	}
+}
