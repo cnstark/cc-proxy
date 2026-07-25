@@ -189,7 +189,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 5. 分类器请求检测：非流式 + system 含安全审查标识时，若配置了 classifier_model 则覆盖请求模型
 	if isClassifierRequest(reqBody) {
 		if alias, ok := h.classifierModels[projectName]; ok && alias != "" {
-			h.log.DebugContext(r.Context(), "classifier request detected, overriding model",
+			h.log.InfoContext(r.Context(), "classifier request detected, overriding model",
 				"original_model", requestModel,
 				"classifier_model", alias,
 			)
