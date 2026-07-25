@@ -82,6 +82,14 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resolver := project.NewResolver(routes, snap.ModelUpstreams)
 	lookup := &snapshotLookup{snap: snap}
 
+	// 收集各项目的 classifier_model 配置
+	classifierModels := make(map[string]string)
+	for name, p := range snap.Projects {
+		if p.ClassifierModel != "" {
+			classifierModels[name] = p.ClassifierModel
+		}
+	}
+
 	// 生成 request_id：优先透传上游 x-request-id，fallback 自生成
 	requestID := r.Header.Get("x-request-id")
 	if requestID == "" {
@@ -114,6 +122,7 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		breaker:           h.breaker,
 		reqLog:            h.reqLog,
 		requestLogEnabled: snap.Server.RequestLogEnabled != nil && *snap.Server.RequestLogEnabled,
+			classifierModels:  classifierModels,
 		projectLogLevel: func(name string) config.LogLevel {
 			if p, ok := snap.Projects[name]; ok {
 				return p.LogLevel

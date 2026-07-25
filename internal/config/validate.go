@@ -98,9 +98,15 @@ func Validate(cfg Config) error {
 				}
 			}
 		}
+		// 5.1 classifier_model 非空时必须存在于 model_map 中
+		if p.ClassifierModel != "" {
+			if _, ok := p.ModelMap[p.ClassifierModel]; !ok {
+				return fmt.Errorf("projects.%s.classifier_model: %q 不在 model_map 中（可用的别名: %s）", p.Name, p.ClassifierModel, strings.Join(modelMapKeys(p.ModelMap), ", "))
+			}
+		}
 	}
 
-	// 6. retry_backoff 校验
+	// 7. retry_backoff 校验
 	for _, u := range cfg.Upstreams {
 		if len(u.RetryBackoff) > 4 {
 			return fmt.Errorf("upstreams.%s.retry_backoff: 最多支持 4 档退避时间，当前 %d 档", u.Name, len(u.RetryBackoff))
@@ -112,7 +118,7 @@ func Validate(cfg Config) error {
 		}
 	}
 
-	// 7. project.log_level 合法性（meta 兼容旧配置，info 为新值）
+	// 8. project.log_level 合法性（meta 兼容旧配置，info 为新值）
 	for _, p := range cfg.Projects {
 		switch p.LogLevel {
 		case "", LogOff, LogMeta, LogInfo, LogDebug:
@@ -122,7 +128,7 @@ func Validate(cfg Config) error {
 		}
 	}
 
-	// 8. server.log_level 合法性（server 不支持 meta）
+	// 9. server.log_level 合法性（server 不支持 meta）
 	switch cfg.Server.LogLevel {
 	case "", LogOff, LogInfo, LogDebug:
 		// 合法
@@ -130,12 +136,12 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("server.log_level: 无效值 %q（允许: %s）", cfg.Server.LogLevel, strings.Join(validLogLevelsStr(false), ", "))
 	}
 
-	// 9. server.log_max_days 范围（nil 已由 NewSnapshot 填充默认值，此处仅校验 >=0）
+	// 10. server.log_max_days 范围（nil 已由 NewSnapshot 填充默认值，此处仅校验 >=0）
 	if cfg.Server.LogMaxDays != nil && *cfg.Server.LogMaxDays < 0 {
 		return fmt.Errorf("server.log_max_days: 不能为负数，当前 %d", *cfg.Server.LogMaxDays)
 	}
 
-	// 10. requestlog_max_days 范围
+	// 11. requestlog_max_days 范围
 	if cfg.Server.RequestLogMaxDays != nil && *cfg.Server.RequestLogMaxDays < 0 {
 		return fmt.Errorf("server.requestlog_max_days: 不能为负数，当前 %d", *cfg.Server.RequestLogMaxDays)
 	}
@@ -152,4 +158,13 @@ func validLogLevelsStr(includeMeta bool) []string {
 	}
 	levels = append(levels, string(LogInfo), string(LogDebug))
 	return levels
+}
+
+// modelMapKeys 返回 model_map 的所有 key 列表（排序），用于校验错误信息。
+func modelMapKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

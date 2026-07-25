@@ -52,6 +52,7 @@ type Handler struct {
 	breaker           *circuitbreaker.Breaker      // nil = 不启用熔断
 	reqLog            requestlog.Recorder          // nil = 不记请求日志
 	requestLogEnabled bool                         // 来自 snap.Server.RequestLogEnabled
+	classifierModels  map[string]string            // projectName → model_map key，非空时分类器请求走该模型
 	projectLogLevel   func(string) config.LogLevel // 查项目 log_level，决定是否记 body
 }
 
@@ -185,7 +186,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	reqModelStr = requestModel
 
-	// 5. 路由查表
+	// 5. 分类器请求检测：非流式 + system 含安全审查标识时，若配置了 classifier_model 则覆盖请求模型
+	if isClassifierRequest(reqBody) {
+		if alias, ok := h.classifierModels[projectName]; ok && alias != "" {
+			h.log.DebugContext(r.Context(), "classifier request detected, overriding model",
+				"original_model", requestModel,
+				"classifier_model", alias,
+			)
+			requestModel = alias
+		}
+	}
+
+	// 6. 路由查表
 	targets, ok := h.resolver.Resolve(projectName, requestModel)
 	if !ok {
 		h.log.InfoContext(r.Context(), "model not found",
@@ -205,7 +217,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	collector := usage.NewCollector(rec, projectName, requestModel)
 
-	// 6. 依次尝试转发
+	// 7. 依次尝试转发
 	allSkipped := true
 	for _, target := range targets {
 		cfg, ok := h.lookup.Upstream(target.Upstream)
@@ -431,6 +443,38 @@ func truncTail(s string, n int) string {
 		return s
 	}
 	return "...(truncated)..." + s[len(s)-n:]
+}
+
+// classifierMarker 分类器系统提示中的标识字符串
+const classifierMarker = "You are a security monitor for autonomous AI coding agents"
+
+// isClassifierRequest 判断是否为分类器请求：非流式 + system 中包含安全审查标识
+func isClassifierRequest(body map[string]any) bool {
+	// 1. 非流式：stream 字段不存在或为 false
+	if stream, ok := body["stream"]; ok {
+		if b, ok := stream.(bool); ok && b {
+			return false
+		}
+	}
+	// 2. system 包含分类器标识
+	sys, ok := body["system"]
+	if !ok {
+		return false
+	}
+	return containsClassifierString(sys)
+}
+
+// containsClassifierString 将 system 字段（string 或 []any）序列化后做子串匹配
+func containsClassifierString(sys any) bool {
+	switch v := sys.(type) {
+	case string:
+		return strings.Contains(v, classifierMarker)
+	case []any:
+		data, err := json.Marshal(v)
+		return err == nil && strings.Contains(string(data), classifierMarker)
+	default:
+		return false
+	}
 }
 
 // statusRecorder 包装 ResponseWriter，捕获状态码并在 debug 级 tee 响应体。

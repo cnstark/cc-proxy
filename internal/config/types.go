@@ -43,6 +43,7 @@ type Project struct {
 	LogLevel          LogLevel            `yaml:"log_level" json:"log_level"`
 	ModelMap          map[string][]string `yaml:"model_map" json:"model_map"`                     // 请求模型名 → 有序 cfg 名列表
 	AllowDirectAccess bool                `yaml:"allow_direct_access" json:"allow_direct_access"` // 允许用 upstream.name 直接访问（默认 false）
+	ClassifierModel   string              `yaml:"classifier_model" json:"classifier_model"`       // 可选：分类器请求强制路由到的 model_map key
 }
 
 // Config 完整配置（对应 config.yaml）
