@@ -82,6 +82,13 @@ func (h *ReloadingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resolver := project.NewResolver(routes, snap.ModelUpstreams)
 	lookup := &snapshotLookup{snap: snap}
 
+	// /v1/models 系列端点由配置快照本地合成，不透传上游。
+	// 鉴权逻辑与转发 handler 一致（private key → project），可见性按项目配置计算。
+	if r.URL.Path == "/v1/models" || strings.HasPrefix(r.URL.Path, "/v1/models/") {
+		NewModelsHandler(h.authStore, resolver, lookup, snap, h.log).ServeHTTP(w, r)
+		return
+	}
+
 	// 收集各项目的 classifier_model 配置
 	classifierModels := make(map[string]string)
 	for name, p := range snap.Projects {
